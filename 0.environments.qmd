@@ -4,7 +4,7 @@
 
 ```{bash,eval=F}
 cd mamba_environments
-for i in *;do mamba env create $i;done
+for i in *;do mamba env create -f $i;done
 ```
 
 ## R Environments for Analysis and Plotting
