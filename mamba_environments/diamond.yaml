@@ -1,0 +1,16 @@
+name: diamond
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - _libgcc_mutex=0.1=conda_forge
+  - _openmp_mutex=4.5=2_gnu
+  - libgcc-ng=13.2.0=h77fa898_11
+  - libgomp=13.2.0=h77fa898_11
+  - libxcrypt=4.4.36=hd590300_1
+  - perl=5.32.1=7_hd590300_perl5
+  - perl-exporter-tiny=1.002002=pl5321hd8ed1ab_0
+  - perl-list-moreutils=0.430=pl5321hdfd78af_0
+  - perl-list-moreutils-xs=0.430=pl5321h031d066_2
+  - perl-math-utils=1.14=pl5321hdfd78af_0
+prefix: /lustre/home/hg456/miniforge3/envs/diamond
