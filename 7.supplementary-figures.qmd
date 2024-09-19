@@ -641,6 +641,8 @@ core_lookup <- df_lookup_Candida %>%
   filter(grepl("B9J",Locus_id)) %>% 
   filter(Include=="Y")
 
+fkpm_all_long <- read_csv(file="data/C_auris_RNA-seq-systematic-review.csv")
+
 fkpm_exclusive <- fkpm_all_long %>% filter(expt!="Bruno_Phagocytes") %>% 
   filter(gene %in% core_lookup$Locus_id)
 
@@ -657,18 +659,58 @@ wide_mat_simple <- wide_mat %>%
   #wide_mat$Condition <- factor(wide_mat$Condition,
    #                                               levels=c("I","II","III","IV","V","Water","None"))
     mat <- as.matrix(wide_mat_simple[, -(1:3)])
-     library(ggfortify)
+    
     pca_res <- prcomp(mat, scale. = TRUE)
-  title = expression(paste("PCA Plot for FPKM in... many isolates (",italic("n")," = 572, 36 studies)"))
   library(pals)
-plot <- autoplot(pca_res, data=wide_mat_simple, colour = "Theme") + labs(title=title) + theme_minimal() + scale_colour_manual(values=as.vector(alphabet(26)))
+plot <- autoplot(pca_res, data=wide_mat_simple, colour = "Theme") + theme_minimal() + scale_colour_manual(values=as.vector(alphabet(26)))
 
 plot
 ```
 
 
 ```{r RNA-seq-meta-analysis-variance}
+widemat_labels <- wide_mat[,(1:3)]
+widemat_genes <- wide_mat[,-(2:3)] %>% column_to_rownames(var="condition")
+genes <- colnames(widemat_genes)
 
+themes <- widemat_labels$Theme %>% unique
+
+variance_data <- data.frame(genes) %>% rename(gene=genes)
+
+for (i in themes) {
+  # Provides variances for each gene for each theme
+  # Test
+  #i <- "Phagocytes"
+  isolates <- widemat_labels %>% filter(Theme==i) %>% select(condition)
+  select_mat <- wide_mat[,-(2:3)] %>% filter(condition %in% isolates$condition) %>% column_to_rownames(var="condition")
+  tmat <- as.data.frame(t(select_mat)) %>% rownames_to_column(var="gene")
+  var_name <- i
+  variances <- tmat %>% rowwise() %>% mutate(!!var_name :=var(c_across(cols=-gene))) %>% select(gene,!!var_name)
+  variance_data <- left_join(variance_data,variances,by="gene")
+  }
+
+names <- read_csv("data/C_auris_gene_name.csv")
+
+duplicate_names <- tabyl(names$name) %>% filter(n>1) %>% select(`names$name`) %>% rename(name = `names$name`)
+
+unique_names <- names %>% mutate(clearname=ifelse(name %in% duplicate_names$name,
+                                                  paste(name,gene,sep="_"),
+                                                  name)) %>% select(-name) %>% rename(name=clearname)
+
+variance_mat <- variance_data %>% left_join(.,unique_names,by="gene") %>% select(-gene) %>% filter(!is.na(name)) %>% column_to_rownames(var="name") 
+
+lvm <- log10(variance_mat) %>% mutate(total = rowSums(across(everything()))) 
+lvm[lvm==-Inf] <- 0
+
+top_variance_mat <- lvm %>% arrange(desc(total)) %>% head(n=25) %>% select(-total)
+bot_variance_mat <- lvm %>% arrange(total) %>% head(n=25) %>% select(-total)
+
+pheatmap(top_variance_mat)
+pheatmap(bot_variance_mat)
+
+lvm_no_total <- lvm %>% select(-total)
+plot <- pheatmap(lvm_no_total,show_rownames = F,main="Within Theme Variances Per Gene")
+plot
 ```
 
 
