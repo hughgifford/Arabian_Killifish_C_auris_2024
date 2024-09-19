@@ -101,7 +101,79 @@ p <- p %>% rotate_tree(90)
 p
 ```
 
-```{r}
+```{r Panfungal-Counts}
+df_fdb <- read_tsv("data/sits.panfungal.hits_1e-20_longest.tsv")
+
+match <- read_tsv("data/sits.panfungal.match_Penicillium_rubens_Wisconsin_54-1255_GCA_000226395.1.txt")
+# https://www.ncbi.nlm.nih.gov/datasets/genome/GCA_000226395.1/
+df_fdb <- df_fdb %>% mutate(Gene_id=gsub("FGRAMPH1_01G","FGRAMPH1_01T",`Gene ID`)) %>% 
+  left_join(.,match,by="Gene_id") %>% 
+  mutate(New_name=ifelse(is.na(New_name),Gene_id,New_name))
+
+small <- read_tsv("data/sits.panfungal.smaller_branch.txt",col_names = F)
+large <- read_tsv("data/sits.panfungal.bigger_branch.txt",col_names = F)
+
+
+
+branch_id <- data.frame(
+  Gene = df_fdb$New_name,
+  Small_branch = sapply(df_fdb$New_name, function(gene) any(grepl(gene, small$X1))),
+  Large_branch = sapply(df_fdb$New_name, function(gene) any(grepl(gene, large$X1)))
+) %>% 
+  mutate(Class=ifelse(Small_branch,"XTC",ifelse(Large_branch,"HTC","Problem"))) %>% 
+  select(Gene,Class) %>% rename(New_name=Gene)
+
+df_classes <- left_join(df_fdb,branch_id,by="New_name")
+
+df_input <- df_classes
+
+species <- read_xlsx("data/sit.panfungal.fungidb_species.xlsx") %>% # Manually curated species designation
+  mutate(Species=str_extract(Organism, "^\\w+\\s\\w+")) %>% # Extract Species
+  mutate(Genera=str_extract(Species, "^\\w+")) %>% # Extract Genera
+  filter(Kingdom=="Fungi")  # Note ZERO hits in Oomycota
+
+genera_order <- species %>% select(Genera) %>% unique() %>% rowid_to_column(var = "Genera_order") 
+
+chart_group_order <- include_list %>% select(Chart_group) %>% unique() %>% rowid_to_column(var = "Chart_group_order") 
+
+include_list <- read_xlsx("data/sit.panfungal.fungidb_species_only.xlsx") %>% select(Species,Include,Chart_group)
+include_list$Include[is.na(include_list$Include)] <- 0
+
+tabulate_mean_panfungal_hits <- function(df_input){
+# Extract counts per species from hits
+# Input df_dfb is (above) but can be split. df_input
+# Blast results per genome
+tbl_panfungal_sit_hits <- df_input %>% group_by(Organism) %>% summarise(Number=n())
+# Add to species data
+tbl_panfungal_sits <- left_join(species,tbl_panfungal_sit_hits,by="Organism") 
+# Add in number zero if the genome registered none
+tbl_panfungal_sits$Number[is.na(tbl_panfungal_sits$Number)] <- 0
+# Calculate mean and prep for tables
+tbl_panfungal_sits_mean <- tbl_panfungal_sits %>% 
+  group_by(Species) %>% summarise(Mean=mean(Number)) %>% # Calculate the means
+  left_join(.,species,by="Species") %>% # Add back in Species info
+  select(-c(Organism,Clade)) %>% # Remove reference genome names and other specifics
+  unique() %>% 
+  left_join(.,genera_order,by="Genera") %>% # Add Genera order
+  left_join(.,include_list,by="Species") %>% # Add Info on Group and Whether to Label
+  mutate(Label=ifelse(Include==1,Species,"")) %>% # Add label names
+  left_join(.,chart_group_order,by="Chart_group")
+return(tbl_panfungal_sits_mean)
+}
+
+tbl_xtc <- df_classes %>% filter(Class=="XTC") %>% tabulate_mean_panfungal_hits() %>% mutate(Class="SIT")
+tbl_htc <- df_classes %>% filter(Class=="HTC") %>% tabulate_mean_panfungal_hits() %>% mutate(Class="STR")
+tbl_sit <- rbind(tbl_htc,tbl_xtc)
+
+tbl_id <- include_list %>% select(-c(Include)) %>% rowid_to_column(var="Fungidb_order")
+
+
+p <- left_join(tbl_sit,tbl_id,by="Species") %>% ggplot(aes(x=fct_reorder(Species,Fungidb_order),y=Mean,fill=Phylum)) + geom_bar(stat="identity", width=1) + facet_wrap(~Class,ncol=1) + scale_fill_aaas() + theme_minimal() + guides(x =  guide_axis(angle = 90))
+p
+```
+
+
+```{r SIT-Expression}
 # Clade I reference (version 2)
 df <- read_tsv("data/Candida_auris_clade_I_B8441_V2_GCA_002759435_reformat.annotation.gff3.synima-parsed.GFF3",col_names = F) %>% select(X1,X4,X5,X7,X9)
 colnames(df) <- c("Contig","Start","End","Strand","Locus_id")
