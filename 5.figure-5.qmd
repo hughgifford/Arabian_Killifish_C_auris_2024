@@ -54,13 +54,7 @@ ggtree_Candida_SIT1 <- function(tree,genotype){
   geom_treescale(x=0, y=0, width=0.1, color='black') + # Treescale
   geom_rootedge(rootedge=0.01) # Give root edge
 }
-```
 
-I'm pleased with this as a function, but better to loop through multiple heatmaps to include species etc.
-
-```{r ggtree-Multiple-Heatmaps-Function,fig.height=14,fig.width=14}
-
-# Function to plot a tree with multiple heatmaps
 ggtree_multiple_heatmaps <- function(tree,starting_heatmap,extra_heatmaps){
   
   # Produce starting tree with heatmap
@@ -93,6 +87,7 @@ ggtree_multiple_heatmaps <- function(tree,starting_heatmap,extra_heatmaps){
   plot
 }
 
+# Dataset
 species <- read_csv("data/species.csv")
 
 tbl_labels_Candida <- labels %>% rowwise() %>%
@@ -105,48 +100,6 @@ h1 <- list(df=tbl_labels_Candida,offset=4,width=0.04,colour_scheme=scale_fill_la
 extra_heatmaps <- list(h1)
 ggtree_multiple_heatmaps(tree,starting_heatmap,extra_heatmaps)
 
-
-# Define common arguments
-common_args <- list(
-  font.size = 2.5,
-  hjust = 0,
-  colnames_angle = 45,
-  colnames_position = "top",
-  colnames_offset_y = 0,
-  colnames_offset_x = 0
-)
-
-# Combine specific arguments with common arguments into a list
-gheatmap_args <- c(
-  list(plot = plot, data = extra_heatmap$df, offset = extra_heatmap$offset, width = extra_heatmap$width),
-  common_args
-)
-
-# Call gheatmap with the combined arguments using do.call
-gheatmap_plot <- do.call(gheatmap, gheatmap_args)
-
-# Alternatively
-
-# Define a wrapper function
-my_gheatmap <- function(plot, data, offset, width, common_args) {
-  do.call(gheatmap, c(
-    list(plot = plot, data = data, offset = offset, width = width),
-    common_args
-  ))
-}
-
-# Call the wrapper function
-gheatmap_plot <- my_gheatmap(plot, extra_heatmap$df, extra_heatmap$offset, extra_heatmap$width, common_args)
-```
-
-
-
-```{r Candida-SIT1-RAXML-Annotated,fig.height=14,fig.width=14}
-require(scales)
-print(pal_lancet()(7))
-print(pal_viridis()(6))
-
-# Selected features only
 tbl_select_features <- tbl_labels_features %>% select(`GO:0033214: siderophore-dependent iron import into cell`,`GO:1904334: heme import across plasma membrane`,`K08197: ARN; MFS transporter, SIT family, siderophore-iron:H+ symporter`,`PF07690.20: MFS_1: Major Facilitator Superfamily`,`PF06609.17: TRI12: Fungal trichothecene efflux pump (TRI12)`,`NetGPI: GPI-Anchored`,`SignalP5: SP(Sec/SPI)`)# %>% as.character()
 tbl_select_features[tbl_select_features==0] <- "Absent"
 tbl_select_features[tbl_select_features==1] <- "Present"
@@ -262,9 +215,6 @@ ggraph(graph, layout = "fr") +
   geom_node_text(aes(label = name), repel = TRUE, size = 3) +
   theme_void() +
   ggtitle("Gene Correlation Network")
-```
-```{bash,eval=F}
-gunzip data/C_auris_RNA-seq-systematic-review.csv
 ```
 
 

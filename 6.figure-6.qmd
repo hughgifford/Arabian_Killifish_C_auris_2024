@@ -1,0 +1,195 @@
+# Figure 6
+
+```{r Panfungal-SITs}
+# Load Tree
+panfungal_tree <- read.tree("data/sit.panfungal.hits_1e-20_longest.aln.fasttree.2.2.11.tree") %>% midpoint()
+
+# Tree Plot Function
+ggtree_circular <- function(tree){
+  ggtree(tree,layout="circular") #+
+    #geom_tippoint(mapping = aes(color = Strain),na.rm=TRUE) +
+    #scale_color_nejm(na.value = NA)# +
+    #scale_color_discrete() 
+}
+
+# Assign Information
+panfungal_tree_df <- as_tibble(panfungal_tree) %>% 
+  mutate(Strain=ifelse(grepl("B9J08",label),"C_auris",
+                ifelse(grepl("CJI96",label),"C_auris",
+                ifelse(grepl("CJI97",label),"C_auris",
+                ifelse(grepl("CJJ09",label),"C_auris",
+                ifelse(grepl("FDK38",label),"C_auris",
+                ifelse(grepl("QG37",label),"C_auris",
+                ifelse(grepl("CJJ07",label),"C_auris",
+                ifelse(grepl("CXQ85",label),"C_haemulonii",
+                ifelse(grepl("CXQ87",label),"C_duobushaemulonii",
+                ifelse(grepl("C7M61",label),"C_pseudohaemulonii",
+                ifelse(grepl("CAWG_05897",label),"C_albicans",
+                ifelse(grepl("C2_08050C",label),"C_albicans",NA))))))))))))) 
+
+```
+
+```{r Plot,fig.height=15,fig.width=15}
+pf_dtm <- read_tsv("data/sit.panfungal.pf_dtm.tsv")
+pf_annotations <- read_tsv("data/sit.panfungal.pf_annotations.tsv")
+pf_pfam_top_table <- read_tsv("data/sit.panfungal.pf_pfam_top_table.tsv")
+pf_kegg_simple <- read_tsv("data/sit.panfungal.pf_kegg_simple.tsv")
+pf_go_named <- read_tsv("data/sit.panfungal.pf_go_named.tsv")
+
+panfungal_tree_df_use <- left_join(panfungal_tree_df,pf_dtm,by="label") %>% 
+  #left_join(.,pf_annotations,by="label") %>% 
+  left_join(.,pf_pfam_top_table,by="label") %>% 
+  left_join(.,pf_kegg_simple,by="label") %>% 
+  left_join(.,pf_go_named,by="label") %>% 
+  mutate(GO_term_column=coalesce(`GO:0033214 siderophore-dependent iron import into cell`,`GO:1904334 heme import across plasma membrane`))
+p <- ggtree(as.treedata(panfungal_tree_df_use),layout = "circular")
+p %<+% panfungal_tree_df_use
+pwidth_var <- 0.07
+p <- p + 
+  geom_treescale(#x=0, y=0, 
+                #width=0.1, color='black'
+    ) +
+      geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=Strain),
+             pwidth = pwidth_var) +
+  geom_fruit(geom = geom_col,
+             mapping = aes(x=Number_TM_domains, y=label,colour=Number_TM_domains),
+             pwidth = 0.14,
+             axis.params = list(
+               axis = 'x',
+               text.size = 2,
+               nbreak = 14, 
+               text.angle = -40, 
+               vjust = 1, 
+               hjust = 0,
+               limits = c(0, 28)), 
+             grid.params = list()) +
+  scale_color_viridis_c(direction = -1) +
+      geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=`PF07690.20 Major Facilitator Superfamily`),
+             pwidth = pwidth_var) +
+        geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=`PF06609.17 Fungal trichothecene efflux pump (TRI12)`),
+             pwidth = pwidth_var) +
+        geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=`PF00083.28 Sugar (and other) transporter`),
+             pwidth = pwidth_var) +
+          geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=`PF03137.24 Organic Anion Transporter Polypeptide (OATP) family`),
+             pwidth = pwidth_var) +
+          geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=Kegg_term),
+             pwidth = pwidth_var) +
+        geom_fruit(geom = geom_tile,
+             mapping = aes(y=label, fill=GO_term_column),
+             pwidth = pwidth_var) +
+  # GPI, SP5
+      #geom_fruit(geom = geom_tile,
+      #       mapping = aes(y=label, fill=Feature),
+      #       pwidth = pwidth_var) +
+
+  scale_fill_manual(values = c("#FFDC91FF","#E18727FF","#0099B4FF","#0072B5FF","#6F99ADFF",
+                               "#1B1919FF","#BC3C29FF",
+                               "#ADB6B6FF","#20854EFF",
+                               "#42B540FF","#925E9FFF",
+                               "#EE4C97FF","#7876B1FF",
+                               "#FDAF91FF","#00468BFF","#ED0000FF"),na.translate = FALSE)
+
+# Create space
+p <- open_tree(p, angle=45) 
+p <- p %>% rotate_tree(90)
+p
+```
+
+```{r}
+# Clade I reference (version 2)
+df <- read_tsv("data/Candida_auris_clade_I_B8441_V2_GCA_002759435_reformat.annotation.gff3.synima-parsed.GFF3",col_names = F) %>% select(X1,X4,X5,X7,X9)
+colnames(df) <- c("Contig","Start","End","Strand","Locus_id")
+
+# Order by contig - from Orthofinder/Synima
+df$Contig <- factor(df$Contig, levels=c("PEKT02000004.1","PEKT02000007.1","PEKT02000014.1","PEKT02000001.1","PEKT02000002.1","PEKT02000005.1","PEKT02000003.1","PEKT02000010.1","PEKT02000013.1","PEKT02000009.1","PEKT02000011.1","PEKT02000008.1","PEKT02000012.1","PEKT02000006.1","PEKT02000015.1"))
+
+# Siderophore transporter list - from CGD
+siderophore_list <- c("B9J08_001499","B9J08_002110","B9J08_001948","B9J08_003908","B9J08_004474","B9J08_004475","B9J08_002581","B9J08_000002","B9J08_001519","B9J08_002465","B9J08_004097","B9J08_001487","B9J08_003921","B9J08_001521","B9J08_001547","B9J08_001548","B9J08_002241","B9J08_001542")
+
+# Siderophore tranporter subset
+df_sits <- df %>% filter(Locus_id %in% siderophore_list)
+
+# Arrange
+df_sits <- df_sits %>% arrange(Contig,Start)
+
+# Clade I reference (version 3)
+df_v3 <- read_tsv("data/Candida_auris_clade_I_B8441_V3_GCA_002759435.3_reformat.annotation.gff3",col_names = F,skip = 7) %>% select(X1,X4,X5,X7,X9)
+colnames(df_v3) <- c("Contig","Start","End","Strand","Locus_id")
+df_v3 <- df_v3 %>% filter(grepl("old_locus_tag",Locus_id)) %>% 
+  separate(Locus_id,into = c("New_locus_id","Locus_id"),sep=";old_locus_tag=") %>% 
+  mutate(New_locus_id=gsub("ID=","",New_locus_id))
+
+# Siderophore tranporter subset
+df_v3_sits <- df_v3 %>% filter(Locus_id %in% siderophore_list)
+
+# Add the names
+haem_list <- c("B9J08_003908","B9J08_004474","B9J08_004475","B9J08_002581","B9J08_000002")
+df_v3_sits_only <- df_v3_sits %>% filter(!Locus_id %in% haem_list) %>% 
+  filter(Locus_id!="B9J08_001548") %>% 
+  mutate(New_name=paste("XTC_",seq.int(1,12,1),sep="")) %>% 
+  filter(New_name!="XTC_2")
+df_v3_sits_a <- df_v3_sits %>% filter(Locus_id=="B9J08_001547") %>% 
+    mutate(New_name="XTC_2A")
+df_v3_sits_b <- df_v3_sits %>% filter(Locus_id=="B9J08_001548") %>% 
+    mutate(New_name="XTC_2B")
+df_v3_haem_only <- df_v3_sits %>% filter(Locus_id %in% haem_list) %>% 
+  mutate(New_name=paste("HTR_",seq.int(1,5,1),sep=""))
+
+new_sit_names <- rbind(df_v3_sits_only,df_v3_haem_only,df_v3_sits_a,df_v3_sits_b) %>% 
+  arrange(New_locus_id) %>% 
+  mutate(Genome_order = seq.int(1,18,1))
+
+new_sit_names_lookup <- new_sit_names %>% select(Locus_id,Genome_order,New_name) %>% 
+  mutate(SIT_name=gsub("B9J08_00","SIT1_",Locus_id)) %>% 
+  mutate(Long_name=paste(New_name," (",SIT_name,")",sep=""))
+
+siderophore_list_SIT <- gsub("B9J08_00","SIT1_",siderophore_list)
+new_sit_names_lookup_only <- new_sit_names_lookup %>% select(SIT_name,New_name,Long_name)
+new_sit_names_lookup_order <- new_sit_names_lookup %>% select(Long_name) %>% as_vector()
+
+df_degs_core_time <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
+  rename(Locus_id=Gene) %>% # Rename column
+  filter(Reference=="Core") %>% 
+  left_join(.,df_cgd_names_modified,by="Locus_id") %>% 
+  select(-c(Locus_id)) %>% 
+  rename(Locus_id=CGD_name)#%>% # Select reference specific
+
+# Add interclade genes
+
+df_degs_core_inter <- read_tsv("data/C_auris_DEGS_interclades_Locus_id.tsv") %>% # Load DEGs
+  filter(Reference=="Core") %>% 
+  left_join(.,df_cgd_names_modified,by="Locus_id") %>% 
+  select(-c(Locus_id)) %>% 
+  rename(Locus_id=CGD_name)#%>% # Select reference specific
+
+df_degs_core <- rbind(df_degs_core_inter,df_degs_core_time)
+
+mt_degs_core <- df_degs_core %>% 
+  mutate(Clade_comparison=paste(Clade,Comparison)) %>% 
+  select(Clade_comparison,Locus_id,Log_FC) %>% 
+  pivot_wider(names_from = Locus_id,values_from = Log_FC,values_fill = 0) %>% 
+  column_to_rownames(var="Clade_comparison")
+
+#matches_and_terms <- c(terms,matches)
+#mt_degs_sit <- mt_degs_core[,matches_and_terms]
+
+# Select only rows of interest
+rows_of_interest_in_order <- c("I 24h vs ypd","II 24h vs ypd","III 24h vs ypd","IV 24h vs ypd","V 24h vs ypd","I 48h vs 24h","II 48h vs 24h","III 48h vs 24h","IV 48h vs 24h","V 48h vs 24h","I 48h vs ypd","II 48h vs ypd","III 48h vs ypd","IV 48h vs ypd","V 48h vs ypd","I vs II 24h","I vs II 48h","I vs II ypd","I vs III 24h","I vs III 48h","I vs III ypd","IV vs II 24h","IV vs II 48h","IV vs II ypd","IV vs III 24h","IV vs III 48h","IV vs III ypd","V vs I 24h","V vs I 48h","V vs I ypd","V vs II 24h","V vs II 48h","V vs II ypd","V vs III 24h","V vs III 48h","V vs III ypd","V vs IV 24h","V vs IV 48h","V vs IV ypd")
+
+just_sits_heatmap <- mt_degs_core[rows_of_interest_in_order,siderophore_list_SIT] %>% 
+  as.data.frame() %>% t() %>% as.data.frame() %>% 
+  rownames_to_column(var="SIT_name") %>% left_join(.,new_sit_names_lookup_only,by="SIT_name") %>% 
+  select(-c(SIT_name,New_name)) %>% column_to_rownames(var="Long_name")
+
+p <- Heatmap(just_sits_heatmap,
+        column_order = rows_of_interest_in_order,
+        row_order = new_sit_names_lookup_order)
+p
+```
+

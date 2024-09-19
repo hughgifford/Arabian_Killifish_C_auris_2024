@@ -7,6 +7,12 @@ cd mamba_environments
 for i in *;do mamba env create -f $i;done
 ```
 
+## Unzipping gzipped datasets
+
+```{bash eval=F}
+gunzip data/C_auris_RNA-seq-systematic-review.csv
+```
+
 ## R Environments for Analysis and Plotting
 
 ```{r}
