@@ -1,0 +1,26 @@
+TermID	Name	Value	LogSize	Frequency	Uniqueness	Dispensability	PC_0	PC_1	Representative	GO_category	Feature
+GO:0005980	glycogen catabolic process	NA	4.22466252884103	0.04621261655124119	0.9300365833843938	0.9053543	null	null	5977	GO Biol. Process	GO:0005980 glycogen catabolic process
+GO:0006958	complement activation, classical pathway	NA	3.873029812061044	0.02056342970898201	0.8898573190945646	0.90644845	null	null	6956	GO Biol. Process	GO:0006958 complement activation, classical pathway
+GO:0007596	blood coagulation	NA	4.422967180527763	0.0729582992434702	0.7054392349345994	0.95415994	null	null	7599	GO Biol. Process	GO:0007596 blood coagulation
+GO:0072378	blood coagulation, fibrin clot formation	NA	2.8779469516291885	0.00207728108260616	0.7084064329362408	0.76546999	null	null	7599	GO Biol. Process	GO:0072378 blood coagulation, fibrin clot formation
+GO:0009411	response to UV	NA	4.246424714908744	0.04858743922127636	0.9320119702589348	0.73988909	null	null	9648	GO Biol. Process	GO:0009411 response to UV
+GO:0006788	heme oxidation	NA	3.777789187434867	0.01651355810230951	0.9452113158700326	0.91138053	null	null	42167	GO Biol. Process	GO:0006788 heme oxidation
+GO:0002088	lens development in camera-type eye	NA	4.015317833069116	0.02853644224619985	0.7273652558958941	0.89409788	null	null	43010	GO Biol. Process	GO:0002088 lens development in camera-type eye
+GO:0048593	camera-type eye morphogenesis	NA	3.875177059814704	0.02066536525282342	0.7212968394446685	0.87569419	null	null	43010	GO Biol. Process	GO:0048593 camera-type eye morphogenesis
+GO:0061303	cornea development in camera-type eye	NA	2.621176281775035	0.00114884112923975	0.7644445655187827	0.73941438	null	null	43010	GO Biol. Process	GO:0061303 cornea development in camera-type eye
+GO:0002026	regulation of the force of heart contraction	NA	2.9253120914996495	0.00231696736136841	0.8525012242521286	0.72823324	null	null	45822	GO Biol. Process	GO:0002026 regulation of the force of heart contraction
+GO:0045823	positive regulation of heart contraction	NA	3.4781334281005174	0.0082815741834405	0.8609985646243481	0.77661566	null	null	45822	GO Biol. Process	GO:0045823 positive regulation of heart contraction
+GO:0086064	cell communication by electrical coupling involved in cardiac conduction	NA	3.025715383901341	0.00292031558032166	0.8743979646141419	0.73628687	null	null	45822	GO Biol. Process	GO:0086064 cell communication by electrical coupling involved in cardiac conduction
+GO:0060035	notochord cell development	NA	2.161368002234975	3.96722116572e-4	0.764223583587941	0.81502694	null	null	60034	GO Biol. Process	GO:0060035 notochord cell development
+GO:0001704	formation of primary germ layer	NA	3.9311017456326383	0.023505785406891012	0.7476895794337078	0.70284967	null	null	61053	GO Biol. Process	GO:0001704 formation of primary germ layer
+GO:0034361	very-low-density lipoprotein particle	NA	3.4650852875574327	0.00812311489849448	0.6199926983589723	0.8801096	null	null	34359	GO Cell. Compart.	GO:0034361 very-low-density lipoprotein particle
+GO:0034362	low-density lipoprotein particle	NA	3.17868923977559	0.00419940255979762	0.628106253397055	0.79690796	null	null	34359	GO Cell. Compart.	GO:0034362 low-density lipoprotein particle
+GO:0004088	carbamoyl-phosphate synthase (glutamine-hydrolyzing) activity	NA	4.392204356370863	0.05614197559449997	0.9385093087174158	0.55114601	null	null	4087	GO Mol. Function	GO:0004088 carbamoyl-phosphate synthase (glutamine-hydrolyzing) activity
+GO:0008395	steroid hydroxylase activity	NA	4.107650826146487	0.02915532371272885	0.9131423443831912	0.50101671	null	null	4392	GO Mol. Function	GO:0008395 steroid hydroxylase activity
+GO:0004867	serine-type endopeptidase inhibitor activity	NA	4.841909812018154	0.1581264423061497	0.8734547375380719	0.95737854	null	null	4866	GO Mol. Function	GO:0004867 serine-type endopeptidase inhibitor activity
+GO:0030414	peptidase inhibitor activity	NA	5.057468306570248	0.2597559113203919	0.8724588149481983	0.97283454	null	null	4866	GO Mol. Function	GO:0030414 peptidase inhibitor activity
+GO:0120020	cholesterol transfer activity	NA	3.5634810853944106	0.0083265165052197	0.9378220259835433	0.64235535	null	null	5319	GO Mol. Function	GO:0120020 cholesterol transfer activity
+GO:0016671	oxidoreductase activity, acting on a sulfur group of donors, disulfide as acceptor	NA	4.67407999402218	0.1074414184961583	0.8984264091360367	0.68343964	null	null	16972	GO Mol. Function	GO:0016671 oxidoreductase activity, acting on a sulfur group of donors, disulfide as acceptor
+GO:0004645	1,4-alpha-oligoglucan phosphorylase activity	NA	4.289187468220734	0.04428596275159352	0.8675918600314527	0.55806944	null	null	102250	GO Mol. Function	GO:0004645 1,4-alpha-oligoglucan phosphorylase activity
+GO:0008184	glycogen phosphorylase activity	NA	4.075546961392531	0.02707767693238843	0.8703802649475632	0.57039311	null	null	102250	GO Mol. Function	GO:0008184 glycogen phosphorylase activity
+GO:0102499	SHG alpha-glucan phosphorylase activity	NA	3.92272545799326	0.01904471621540959	0.8723506013251058	0.5305512	null	null	102250	GO Mol. Function	GO:0102499 SHG alpha-glucan phosphorylase activity

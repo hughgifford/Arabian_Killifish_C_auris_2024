@@ -1,6 +1,900 @@
 # Supplementary Figures
 
-```{r}
+```{r Key-Functions}
+# Function to extract metadata from names
+# Used for Correlation Matrix Plots
+# Extracts Clade, Timepoint and Replicate from a list of names
+# E.g. III_24h_1
+extract_metadata <- function(names) {
+  data.frame(
+    Clade = sapply(strsplit(names, "_"), `[`, 1),
+    Timepoint = sapply(strsplit(names, "_"), `[`, 2),
+    Replicate = sapply(strsplit(names, "_"), `[`, 3)
+  )
+}
 
+# Extract useful names
+output_gene_descriptors <- function(df_degs_time_input,search_term){
+  df_degs_time_input %>% 
+  rownames_to_column(var="Unique_rowname") %>% 
+  left_join(.,ak_descriptions,by="Unique_rowname") %>% 
+  mutate(Search_field=paste(Description,Keywords)) %>% 
+  # Can output here as below
+  # Found some useful genes to annotate
+  filter(grepl(search_term,Search_field)) %>% 
+  #select(Locus_name) %>% table() # Several genes are repeated, I'll need to count them
+  #select(Unique_rowname) %>% 
+  mutate(Short_name=gsub("_.*","",Unique_rowname))
+}
+
+# Function to discover enriched gene sets
+enrichment <- function(clade,comparison){
+  
+  ## DEG SUBSET
+  # Select a subset of genes, for that comparison of clade and timepoint
+  df_degs_subset <- df_degs_input %>% 
+    filter(Clade==clade) %>% 
+    filter(Comparison==comparison) %>% 
+    select(Clade,Comparison,Locus_id,DEG,Log_FC) 
+  
+  # Count DEGs within this subset
+  df_totals <- df_degs_subset %>% group_by(DEG) %>% summarise(Number=n()) %>% column_to_rownames(var="DEG")
+
+  # Add zero rows if not present
+  if(!"Up" %in% row.names(df_totals)) {df_totals <- rbind(df_totals, Up = c(Number = 0))}
+  if(!"No" %in% row.names(df_totals)) {df_totals <- rbind(df_totals, No = c(Number = 0))}
+  if(!"Down" %in% row.names(df_totals)) {df_totals <- rbind(df_totals, Down = c(Number = 0))}
+  
+  # Produce named variables
+  total_down <- as.numeric(df_totals["Down","Number"])
+  total_not <- as.numeric(df_totals["No","Number"])
+  total_up <- as.numeric(df_totals["Up","Number"])
+  total_deg <- total_down+total_up
+  total <- total_not+total_deg
+  
+  ## FEATURES
+  # Join with feature list - I had to swap this around.
+  # Ensure genes with no features are described
+  df_deg_feat <- left_join(df_degs_subset,df_features_input,by="Locus_id") %>% 
+    mutate(Feature=ifelse(is.na(Feature),"No Feature",Feature)) %>% 
+    distinct()
+  
+  # GROUP FEATURES BY DEG
+  table_deg_feats <- df_deg_feat %>% 
+    group_by(Feature,DEG) %>% summarise(Number=n()) %>% 
+    pivot_wider(names_from = DEG,values_from = Number,values_fill = list(Number=0)) %>% 
+    distinct() %>% # Just in case duplication - not an issue at the moment
+    filter(Feature!="No Feature") # Remove the No Feature column
+  # Add zero to columns if not present
+  if(!"Up" %in% colnames(table_deg_feats)) {table_deg_feats <- table_deg_feats %>%add_column(Up = 0)}
+  if(!"Down" %in% colnames(table_deg_feats)) {table_deg_feats <- table_deg_feats %>%add_column(Down = 0)}
+  if(!"No" %in% colnames(table_deg_feats)) {table_deg_feats <- table_deg_feats %>%add_column(No = 0)}
+  
+  # Tabulate "Up" vs "Down"
+  table_up <- table_deg_feats %>% #filter(Feature!="No Feature") %>% 
+    filter(Up>1) %>%  # Try just looking at enrichment where >1 DEG
+    mutate(DEGS_with_feature=Up,
+            Non_DEGS_with_feature=No+Down,
+            DEGS_without_feature=total_up-Up,
+            Non_DEGS_without_feature=total_not+total_down-No-Down) %>% 
+    column_to_rownames(var="Feature") %>% filter(Up!=0) %>% select(-c(No,Up,Down)) #%>% t()
+  
+  # Check gene totals
+  table_up %>% mutate(total=DEGS_with_feature+Non_DEGS_with_feature+DEGS_without_feature+Non_DEGS_without_feature) %>% 
+    distinct(total) #%>% nrow()
+  
+  table_down <- table_deg_feats %>% #filter(Feature!="No Feature") %>% 
+    filter(Down>1) %>%  # Try just looking at enrichment where >1 DEG 
+    mutate(DEGS_with_feature=Down,
+           Non_DEGS_with_feature=No+Up,
+           DEGS_without_feature=total_down-Down,
+           Non_DEGS_without_feature=total_not+total_up-No-Up) %>%
+    column_to_rownames(var="Feature") %>% filter(Down!=0) %>% select(-c(No,Up,Down)) #%>% t()
+  
+  # Check gene totals
+  table_down %>% mutate(total=DEGS_with_feature+Non_DEGS_with_feature+DEGS_without_feature+Non_DEGS_without_feature) %>% 
+    distinct(total) #%>% nrow()
+
+  # FISHER'S EXACT
+  # Function
+  contingency <- function(df,feature){
+    t <- matrix(c(as.numeric(df[1,feature]),
+                  as.numeric(df[2,feature]),
+                  as.numeric(df[3,feature]),
+                  as.numeric(df[4,feature])),nrow=2)
+    test <- fisher.test(t)
+    return(test$p.value)
+  }
+  
+  # Fisher's test and Bonferonni set
+  matrix_up <- t(table_up)
+  features_up <- colnames(matrix_up)
+  p_values_up <- sapply(features_up, contingency, df = matrix_up)
+  p_values_up <- data.frame(p_values_up) %>% mutate(Set="Up") %>% 
+    mutate(P_value=p_values_up) %>% 
+    select(Set,P_value) %>% rownames_to_column(var="Feature")
+  # Apply Bonferroni here
+  #bonferoni_threshold_up <- 0.05/(nrow(p_values_up))
+  #p_values_up <- p_values_up %>% filter(P_value<=bonferoni_threshold_up)
+  # Apply BH
+  p_values_up$FDR <- p.adjust(p_values_up$P_value, method = "BH" )
+  p_values_up <-  p_values_up %>% filter(FDR<=0.001) 
+  
+  matrix_down <- t(table_down)
+  features_down <- colnames(matrix_down)
+  p_values_down <- sapply(features_down, contingency, df = matrix_down)
+  p_values_down <- data.frame(p_values_down) %>% mutate(Set="Down") %>% 
+    mutate(P_value=p_values_down) %>% 
+    select(Set,P_value) %>% rownames_to_column(var="Feature")
+  # Apply Bonferroni here
+  #bonferoni_threshold_down <- 0.05/(nrow(p_values_down))
+  #p_values_down <- p_values_down %>% filter(P_value<=bonferoni_threshold_down)
+  # Apply BH
+  p_values_down$FDR <- p.adjust(p_values_down$P_value, method = "BH" )
+  p_values_down <-  p_values_down %>% filter(FDR<=0.001) 
+  
+  result <- rbind(p_values_down,p_values_up)
+  
+  # Add Mean LogFC
+  logFC_up <- df_deg_feat %>% filter(DEG=="Up") %>% group_by(Feature) %>% summarise(Mean_LogFC=mean(Log_FC)) %>% mutate(Set="Up")
+  logFC_down <- df_deg_feat %>% filter(DEG=="Down") %>% group_by(Feature) %>% summarise(Mean_LogFC=mean(Log_FC)) %>% mutate(Set="Down")
+  logFC_both <- rbind(logFC_up,logFC_down) 
+  
+  # Add Gene Number
+  ratio_up <- table_up %>% rownames_to_column(var="Feature") %>% mutate(Set="Up")
+  ratio_down <- table_down %>% rownames_to_column(var="Feature") %>% mutate(Set="Down")
+  ratios <- rbind(ratio_up,ratio_down) %>% 
+    mutate(Number_genes=DEGS_with_feature) %>% 
+    mutate(Ratio=DEGS_with_feature/(DEGS_with_feature+DEGS_without_feature)) %>% 
+    select(Feature,Set,Number_genes,Ratio)
+  
+  result2 <- left_join(result,logFC_both,by=c("Feature","Set")) %>% 
+    left_join(.,ratios,by=c("Feature","Set")) %>% 
+    mutate(Clade=clade,Comparison=comparison)
+  
+  # Apply Bonferroni here
+  #bonferoni_threshold <- 0.05/(nrow(result2))
+  #result3 <- result2 %>% filter(P_value<=bonferoni_threshold)
+  
+  return(result2)
+}
+```
+
+# Supp. Fig. 1 Model Evaluation
+
+```{r C-Growth-Curve}
+# Access data
+wells <- read_xlsx("data/growth_curves.xlsx",sheet="wells") %>% clean_names()
+absorbances <- read_xlsx("data/growth_curves.xlsx",sheet="absorbances",col_names=F,skip=3) %>% clean_names()
+
+# Transform data
+data <- pivot_longer(absorbances, names_to = "cycle", cols = -c(x1)) %>% 
+  mutate(hour = (as.numeric(gsub("x","",cycle))-2)) %>% 
+  rename(well = x1) %>% 
+  left_join(.,wells,by="well") 
+
+# Calculate mean and sd
+calc <- data %>% 
+  filter(contents != "YPD") %>% 
+  group_by(hour,clade) %>% 
+  summarise(mean_value = mean(value), 
+            sd_value = sd(value))
+
+# Graph growth curves
+plot_growth <- calc %>% ggplot(aes(x=hour, y=mean_value, colour=clade)) + 
+  geom_line() +
+  geom_point() +
+  geom_errorbar(aes(ymin = mean_value - sd_value, ymax = mean_value + sd_value),
+                #colour = "black",
+                alpha = 0.5) +
+  scale_y_log10(expand = c(0,0)) +
+  scale_x_continuous(breaks = c(0,6,12,18,24),
+                     expand = c(0,0)) +
+  my_theme +
+  scale_colour_nejm() + 
+  labs(title ="Median Isolate Growth (and Standard Deviation)", 
+       x = "Time (hours)",
+       y="log10(absorbance)", 
+       colour = "Clade")
+plot_growth
+```
+
+```{r pca-plots-rna-seq-both-ak-and-yeast,fig.width=10, fig.height=4, dev='pdf'}
+# Load data
+
+
+make_fpkm_pca <- function(input_file,plot_title,option,option_type){
+  transcripts <- read_tsv(input_file) %>% 
+    select(condition,gene,fpkm) %>% 
+    rename(transcript=gene) %>% 
+    filter(fpkm != 0)
+  
+  transcripts_matrix <- pivot_wider(transcripts,names_from = transcript,
+                                     values_from = fpkm,
+                                     values_fill = 0)
+
+  # Add more information
+  transcripts_matrix_expanded <- transcripts_matrix %>% 
+    separate_wider_delim(cols = "condition", delim="_", names=c("Injection","Timepoint","rep"))
+  transcripts_matrix_expanded$Injection <- factor(transcripts_matrix_expanded$Injection,
+                                                  levels=c("I","II","III","IV","V","Water","None"))
+    mat <- as.matrix(transcripts_matrix_expanded[, -(1:3)])
+
+  
+  # Plot
+  pca_res <- prcomp(mat, scale. = TRUE)
+  title = paste("PCA Plot for FPKM in",plot_title)
+  autoplot(pca_res, data=transcripts_matrix_expanded, colour = "Injection", shape = "Timepoint", frame = option, frame.type = 'norm', frame.colour = option_type) + labs(title=title) + theme_minimal() + scale_color_nejm() + scale_fill_nejm()
+}
+
+c <- make_fpkm_pca("data/C_auris_FPKM.tsv","Yeast Genes","T","Timepoint")
+d <- make_fpkm_pca("data/A_dispar_FPKM.tsv","AK Genes","T","Injection")
+require(patchwork)
+c+d
+```
+
+
+```{r F-Correlation-Matrix-A-dispar-Sham-vs-No-Injection,fig.height=8.5,fig.width=10}
+cpm_matrix <- read.table("data/C_auris_CPM.matrix")
+
+# Extract metadata for rows and columns
+row_metadata <- extract_metadata(rownames(cpm_matrix))
+col_metadata <- extract_metadata(colnames(cpm_matrix))
+
+# Define consistent color mappings
+clade_colors <- pal_lancet()(5)  # Get 5 colors from the Lancet palette
+clade_colors <- pal_nejm()(5)
+names(clade_colors) <- c("I", "II", "III", "IV", "V")
+#clade_colors <- c("I" = "red", "II" = "blue", "III" = "green", "IV" = "purple", "V" = "orange")
+#timepoint_colors <- c("24h" = "red", "48h" = "darkred", "ypd" = "orange")
+#replicate_colors <- c("1" = "lightgray", "2" = "gray", "3" = "darkgray")
+timepoint_colors <- c("24h" = "cyan", "48h" = "magenta","ypd" = "burlywood1")
+replicate_colors <- c("1" = "white", "2" = "darkgrey", "3" = "black")
+
+# Create HeatmapAnnotation objects with consistent color mappings
+ha_row <- rowAnnotation(
+  Clade = row_metadata$Clade,
+  Timepoint = row_metadata$Timepoint,
+  Replicate = row_metadata$Replicate,
+  col = list(Clade = clade_colors, Timepoint = timepoint_colors, Replicate = replicate_colors)
+)
+
+ha_col <- columnAnnotation(
+  Clade = col_metadata$Clade,
+  Timepoint = col_metadata$Timepoint,
+  Replicate = col_metadata$Replicate,
+  col = list(Clade = clade_colors, Timepoint = timepoint_colors, Replicate = replicate_colors)
+)
+
+# Add viridis colours for correlation
+viridis_colours <- colorRamp2(seq(0.7, 1, length.out = 100), viridis(100))
+
+# Generate the heatmap with consistent annotations
+plot <- Heatmap(cpm_matrix, name = "Correlation", top_annotation = ha_col, left_annotation = ha_row,col = viridis_colours)
+plot
+
+```
+
+
+```{r G-Correlation-Matrix-A-dispar-C-auris-vs-Sham-Injection,fig.height=8.5,fig.width=10}
+cpm_matrix <- read.table("data/A_dispar_sham_CPM.matrix")
+
+# Extract metadata for rows and columns
+row_metadata <- extract_metadata(rownames(cpm_matrix))
+col_metadata <- extract_metadata(colnames(cpm_matrix))
+
+# Define consistent color mappings
+clade_colors <- pal_nejm()(7)  # Get 5 colors from the Lancet palette
+print(clade_colors)
+#names(clade_colors) <- c("I", "II", "III", "IV", "V")
+clade_colors <- c("None"="#FFDC91FF","Water"="#6F99ADFF")
+#clade_colors <- c("I" = "red", "II" = "blue", "III" = "green", "IV" = "purple", "V" = "orange")
+timepoint_colors <- c("24h" = "cyan", "48h" = "magenta")
+replicate_colors <- c("1" = "white", "2" = "darkgray", "3" = "black")
+
+# Create HeatmapAnnotation objects with consistent color mappings
+ha_row <- rowAnnotation(
+  Clade = row_metadata$Clade,
+  Timepoint = row_metadata$Timepoint,
+  Replicate = row_metadata$Replicate,
+  col = list(Clade = clade_colors, Timepoint = timepoint_colors, Replicate = replicate_colors)
+)
+
+ha_col <- columnAnnotation(
+  Clade = col_metadata$Clade,
+  Timepoint = col_metadata$Timepoint,
+  Replicate = col_metadata$Replicate,
+  col = list(Clade = clade_colors, Timepoint = timepoint_colors, Replicate = replicate_colors)
+)
+
+# Generate the heatmap with consistent annotations
+plot <- Heatmap(cpm_matrix, name = "Correlation", top_annotation = ha_col, left_annotation = ha_row,col = viridis_colours) # was col = viridis::viridis(100)
+plot
+```
+
+```{r H-Correlation-Matrix-C-auris,fig.height=8.5,fig.width=10}
+cpm_matrix <- read.table("data/A_dispar_infection_CPM.matrix")
+
+# Extract metadata for rows and columns
+row_metadata <- extract_metadata(rownames(cpm_matrix))
+col_metadata <- extract_metadata(colnames(cpm_matrix))
+
+# Define consistent color mappings
+clade_colors <- pal_nejm()(6)  # Get 5 colors from the Lancet palette
+names(clade_colors) <- c("I", "II", "III", "IV", "V","Water")
+#clade_colors <- c("None"="lightgreen","Water"="darkblue")
+#clade_colors <- c("I" = "red", "II" = "blue", "III" = "green", "IV" = "purple", "V" = "orange")
+timepoint_colors <- c("24h" = "cyan", "48h" = "magenta")
+replicate_colors <- c("1" = "white", "2" = "darkgray", "3" = "black")
+
+# Create HeatmapAnnotation objects with consistent color mappings
+ha_row <- rowAnnotation(
+  Clade = row_metadata$Clade,
+  Timepoint = row_metadata$Timepoint,
+  Replicate = row_metadata$Replicate,
+  col = list(Clade = clade_colors, Timepoint = timepoint_colors, Replicate = replicate_colors)
+)
+
+ha_col <- columnAnnotation(
+  Clade = col_metadata$Clade,
+  Timepoint = col_metadata$Timepoint,
+  Replicate = col_metadata$Replicate,
+  col = list(Clade = clade_colors, Timepoint = timepoint_colors, Replicate = replicate_colors)
+)
+
+viridis_colours <- colorRamp2(seq(0.7, 1, length.out = 100), viridis(100))
+
+# Generate the heatmap with consistent annotations
+plot <- Heatmap(cpm_matrix, name = "Correlation", top_annotation = ha_col, left_annotation = ha_row,col = viridis_colours)
+plot
+
+#save_pdf(plot,file="../figures/trinity_gjey01_sample_correlation_v0_2024_09_04.pdf",height = 10, width = 10)
+```
+
+
+
+# Supp. Fig. 2: *A. dispar* Enrichment
+
+```{r A-dispar-Enrichment-sham}
+# Enrichment Testing on Sham Injection
+# Select only Sham DEGs
+df_degs_input <- ak_logfc %>% filter(Category=="Inject Controls")
+# Count number of DEGs
+df_degs_input %>%  filter(DEG!="No") %>% select(Locus_id) %>% unique() %>% nrow()
+100*(30/27481)
+# Prep Features Input
+df_features <- read_tsv("data/A_dispar_annotations.tsv") %>%  mutate(Feature=paste(Go_term,Description))#rename(Feature=Go_term)
+# List Gene Names
+list_gene_names <- df_features %>% select(Locus_id) %>% distinct()
+# Prepare Features to Locus id lookup table
+df_features_input <- df_features %>% select(Locus_id,Feature)
+# Perform enrichment testing
+x_sham <- rbind(enrichment("24h","Water vs None"),
+                enrichment("48h","Water vs None"))
+# Only 4 terms enriched, all with same logFC, implying a driver.
+# Get a list of the GO terms
+x_features <- x_sham %>% select(Feature)
+x_enriched_genes <- df_degs_input %>% filter(DEG=="Up") %>% left_join(.,df_features_input,by="Locus_id") %>% unique() %>% filter(Feature %in% x_features$Feature) %>% select(Locus_id) %>% unique()
+ak_descriptions %>% filter(Locus_id %in% x_enriched_genes$Locus_id)
+```
+```{r A-dispar-Enrichment-Infection}
+# Enrich Infection
+df_degs_input <- ak_logfc %>% filter(Category=="Infection vs Sham Controls")
+x <- rbind(enrichment("24h","I vs Water"),
+           enrichment("24h","II vs Water"),
+           enrichment("24h","III vs Water"),
+           enrichment("24h","IV vs Water"),
+           enrichment("24h","V vs Water"),
+           enrichment("48h","I vs Water"),
+           enrichment("48h","II vs Water"),
+           enrichment("48h","III vs Water"),
+           enrichment("48h","IV vs Water"),
+           enrichment("48h","V vs Water"))
+
+x_better0 <- x %>%
+  mutate(Term=ifelse(grepl("^GO",Feature),"GO",
+              ifelse(grepl("^K",Feature),"KEGG",
+              ifelse(grepl("^PF",Feature),"PFAM","Other")))) %>% 
+  mutate(Clade=gsub(" vs ","\nvs\n",Clade))
+require(ggsci)
+
+revigo_lookup <- read_tsv("data/A_dispar_REVIGO.txt")
+revigo_remove <- read_tsv("data/A_dispar_REVIGO_remove.txt")
+
+go_remove <- x_better0 %>% 
+  filter(!Feature %in% revigo_remove$Feature) %>% 
+  left_join(.,revigo_lookup,by="Feature") %>% 
+  mutate(Term=ifelse(grepl("^G",Feature),GO_category,Term))
+
+hotdot1 <- go_remove %>% 
+  mutate(Comparison=gsub(" vs Water","",Comparison)) %>% 
+  ggplot(aes(x=Mean_LogFC,y=fct_reorder(Feature,-Mean_LogFC),colour=Comparison,size=Ratio,alpha = FDR,shape=Clade)) + geom_point() + theme_minimal(base_size = 8) +
+  scale_y_discrete(limits=rev
+                   ) +  
+  scale_alpha_continuous(trans = "reverse") + 
+  facet_grid(rows=vars(Term),scale="free_y",space="free_y",switch = "y")+
+  theme(strip.placement = "outside") +
+  scale_colour_nejm()
+hotdot1
+```
+
+# Supp. Fig. 3 *C. auris* orthogroup and variance detection
+
+```{r Assign-orthogroups}
+# Add Accessory Genome Data
+df <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% 
+  rename(Locus_id=Gene) %>% 
+  mutate(`-1log10(FDR)`=-1*log10(FDR))
+
+# Load the orthologues including Candida
+df_orth_Candida <- read_tsv("data/orthofinder.GENE_CLUSTERS_SUMMARIES.clusters_and_uniques",col_names = F)
+df_orth_Candida <- df_orth_Candida %>% select(X1,X2,X4)
+colnames(df_orth_Candida) <- c("Cluster","Strain","Locus_id")
+df_orth_Candida <- df_orth_Candida %>% mutate(Strain=gsub("_GCA.*","",Strain)) %>% 
+  mutate(Strain=gsub("_ASM.*","",Strain))
+
+# Make a matrix
+df_wide_orth_Candida <- df_orth_Candida %>% 
+  group_by(Cluster,Strain) %>% 
+  summarise(Number=n()) %>% 
+  pivot_wider(names_from = Strain,
+              values_from = Number,
+              values_fill = list(Number=0)) %>% 
+  mutate(Present_in_Auris=ifelse(Candida_auris_clade_I_B8441_V2+Candida_auris_clade_II_B11220+Candida_auris_clade_III_B11221_V1+Candida_auris_clade_IV_B11245+Candida_auris_clade_V_B18474_V1>0,"1","0"))
+
+colnames(df_wide_orth_Candida) <- c("Cluster","Calb","III","II","IV","I","V","Chaem","Caur")
+# Labels
+df_label_orth_Candida <- df_wide_orth_Candida %>% 
+# Single Copy Orthologues plus C_albicans C_haemulonii
+  mutate(Category=ifelse(Calb==1&&Chaem==0&&Caur==0,"Unique_Alb",
+                  ifelse(Calb>=1&&Chaem==0&&Caur==0,"Orthogroup_Alb",
+                  ifelse(Calb==0&&Chaem==1&&Caur==0,"Unique_Haem",
+                  ifelse(Calb==0&&Chaem>=1&&Caur==0,"Orthogroup_Haem",
+                  ifelse(Calb==1&&Chaem==1&&Caur==0,"SCO_AlbHaem",
+                  ifelse(Calb>=1&&Chaem>=1&&Caur==0,"MCO_AlbHAem",
+                  ifelse(Calb==1&&Chaem==1&&I==1&&II==1&&III==1&&IV==1&&V==1,"SCO_All",
+                  ifelse(Calb>=1&&Chaem>=1&&I>=1&&II>=1&&III>=1&&IV>=1&&V>=1,"MCO_All",
+                  ifelse(Calb==0&&Chaem==0&&I==1&&II==1&&III==1&&IV==1&&V==1,"SCO_Auris",
+                  ifelse(Calb==0&&Chaem==0&&I>=1&&II>=1&&III>=1&&IV>=1&&V>=1,"MCO_Auris",
+                  ifelse(Calb==0&&Chaem==1&&I==1&&II==1&&III==1&&IV==1&&V==1,"SCO_HaemAuris",
+                  ifelse(Calb==0&&Chaem>=1&&I>=1&&II>=1&&III>=1&&IV>=1&&V>=1,"MCO_HaemAuris",
+                  ifelse(Calb==1&&Chaem==0&&I==1&&II==1&&III==1&&IV==1&&V==1,"SCO_AlbAuris",
+                  ifelse(Calb>=1&&Chaem==0&&I>=1&&II>=1&&III>=1&&IV>=1&&V>=1,"MCO_AlbAuris",
+                  ifelse(Calb==0&&Chaem==0&&I==1&&II==0&&III==0&&IV==0&&V==0,"Unique_AurisI",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==1&&III==0&&IV==0&&V==0,"Unique_AurisII",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==0&&III==1&&IV==0&&V==0,"Unique_AurisIII",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==0&&III==0&&IV==1&&V==0,"Unique_AurisIV",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==0&&III==0&&IV==0&&V==1,"Unique_AurisV",
+                  ifelse(Calb==0&&Chaem==0&&I>=1&&II==0&&III==0&&IV==0&&V==0,"Orthogroup_AurisI",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II>=1&&III==0&&IV==0&&V==0,"Orthogroup_AurisII",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==0&&III>=1&&IV==0&&V==0,"Orthogroup_AurisIII",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==0&&III==0&&IV>=1&&V==0,"Orthogroup_AurisIV",
+                  ifelse(Calb==0&&Chaem==0&&I==0&&II==0&&III==0&&IV==0&&V>=1,"Orthogroup_AurisV",
+                  ifelse(Calb==0&&Chaem==0&&I>=0&&II>=0&&III>=0&&IV>=0&&V>=0,"Accessory_Auris",
+                  ifelse(Calb==0&&Chaem>=1&&I>=0&&II>=0&&III>=0&&IV>=0&&V>=0,"Accessory_HaemAuris",
+                  ifelse(Calb>=1&&Chaem==0&&I>=0&&II>=0&&III>=0&&IV>=0&&V>=0,"Accessory_AlbAuris",
+                  ifelse(Calb>=1&&Chaem>=1&&I==0&&II==0&&III==0&&IV==0&&V==0,"Accessory_AlbHaem",
+                  ifelse(Calb>=1&&Chaem>=1&&I>=0&&II>=0&&III>=0&&IV>=0&&V>=0,"Accessory_AlbHaemAuris",
+                  ifelse(Calb>=1&&Chaem>=1&&I==0&&II>=1&&III>=1&&IV>=1&&V>=1,"Accessory_Lost_in_I",
+                  ifelse(Calb>=1&&Chaem>=1&&I>=1&&II==0&&III>=1&&IV>=1&&V>=1,"Accessory_Lost_in_II",
+                  ifelse(Calb>=1&&Chaem>=1&&I>=1&&II>=1&&III==0&&IV>=1&&V>=1,"Accessory_Lost_in_III",
+                  ifelse(Calb>=1&&Chaem>=1&&I>=1&&II>=1&&III>=1&&IV==0&&V>=1,"Accessory_Lost_in_IV",
+                  ifelse(Calb>=1&&Chaem>=1&&I>=1&&II>=1&&III>=1&&IV>=1&&V==0,"Accessory_Lost_in_V","Other")
+                         ))))))))))))))))))))))))))))))))))
+
+table(df_label_orth_Candida$Category)
+
+# Match
+df_lookup_orth_Candida <- df_label_orth_Candida %>% select(Cluster,Category)
+df_lookup_genes_Candida <- df_orth_Candida %>% select(Cluster,Locus_id)
+df_lookup_Candida <- left_join(df_lookup_genes_Candida,
+                               df_lookup_orth_Candida,by="Cluster")
+
+pangenome_table <- df_lookup_Candida %>% group_by(Category) %>% summarise(Number=n())
+
+degs_accessory <- df %>% filter(DEG!="No") %>% # Only the Up/Down DEGs
+  left_join(.,df_lookup_Candida,by="Locus_id") %>% 
+  mutate(Category=gsub("Unique.*","Unique",Category)) %>% # Simplify uniques as faceting for clade
+  mutate(Category=gsub("Orthogroup.*","Unique_Orthogroup",Category)) %>% # Sim
+  mutate(Category=gsub("_.*","",Category)) 
+
+
+degs_accessory$Category <- factor(degs_accessory$Category,
+                                    levels=c("Unique","Accessory","MCO","SCO"))
+
+
+plot <- degs_accessory %>% group_by(Reference,Clade,Comparison,DEG,Category) %>% # Granular grouping - no need for Unique()
+  summarise(Number=n()) %>% # Totals for each intersection
+  mutate(FigNumber=ifelse(DEG=="Down",-Number,Number)) %>% # Create negative number for Down
+  ggplot(aes(x=Clade,y=FigNumber,fill=Category,label=Number)) + # Plot bar chart
+  geom_bar(stat="identity") + # Make seethrough
+  geom_text(cex=2,position = position_stack(vjust=0.5)) + # Add numbers
+  facet_wrap(Comparison~Reference,nrow=1) + # Divide so as to see Specific Ref found DEGs
+  theme_prism() + # Simple theme
+  scale_fill_manual(values=c("#6A6599FF","#DF8F44FF","#B24745FF","#79AF97FF")) +
+  geom_hline(yintercept = 0, color = "black", size = 0.5)
+plot
+#ggsave(plot=plot,file="../figures/bar_pangenome_degs_v0_2024_08_16.pdf",height=10,width=10)
+
+# If we define the accessory genome as non-MCO/SCO
+define_accessory <- df %>% 
+  left_join(.,df_lookup_Candida,by="Locus_id") %>% 
+  mutate(Feature=ifelse(grepl("CO",Category),"Core","Accessory"))
+
+feature_accessory_clade <- define_accessory %>% 
+  filter(Feature=="Accessory") %>% 
+  select(Locus_id,Feature,Clade) %>% 
+  unique()
+
+table(feature_accessory_clade$Clade)
+```
+```{r Plot-Accessory-DEGs,fig.height=10,fig.width=20}
+strains <- c("Calb","III","I","II","IV","V","Chaem") # Strain names
+results <- data.frame() # Initialise df
+for(each in strains){
+  result_0 <- df_label_orth_Candida %>% # Starting df
+    select({{each}},Cluster,Category) %>% # Use {{}} to select input var as column
+    filter(.data[[each]]!=0) %>% # Use .data[[]] to filter on input var
+    group_by(Category) # Group by categories as assigned
+  result_1 <- result_0 %>% # Summarise cluters
+    summarise(Number=n()) %>% mutate(Species=each) %>% mutate(Object="Cluster")
+  result_2 <- result_0 %>% # Summarise gene numbers
+    summarise(Number=sum(.data[[each]])) %>% mutate(Species=each) %>% mutate(Object="Gene")
+  results <- rbind(results,result_1,result_2) # Add these together
+}
+
+results3 <- results %>% 
+  mutate(SuperCategory=gsub("_.*","",Category)) %>% 
+  mutate(SubCategory=gsub(".*_","",Category)) %>% 
+  mutate(SubCategory=gsub("Auris.*","Auris",SubCategory)) %>% 
+  mutate(SubCategory=ifelse(SubCategory=="Alb","Within Alb",SubCategory)) %>% 
+  mutate(SubCategory=ifelse(SubCategory=="Haem","Within Haem",SubCategory)) %>% 
+  mutate(SubCategory=ifelse(SubCategory=="Auris","Within Auris",SubCategory)) %>% 
+  mutate(SubCategory=ifelse(SubCategory=="AlbHaemAuris","All",SubCategory))
+
+results3$Species <- factor(results3$Species,
+                          levels = c("Calb","Chaem","V","IV","I","III","II"))
+results3$SuperCategory <- factor(results3$SuperCategory,
+                           levels=c("SCO","MCO","Accessory","Orthogroup","Unique"))
+results3$SubCategory <- factor(results3$SubCategory,
+                          levels = c("All","AlbHaem","AlbAuris","HaemAuris","Within Species","Within Auris","Within Haem","Within Alb"))
+
+require(ggsci)
+require(ggrepel)
+require(ggprism)
+  
+bar_orthologues <- function(df){
+  df %>% filter(Object=="Gene") %>% 
+  ggplot(aes(x=fct_rev(Species),y=Number,fill=fct_rev(SubCategory),label=Number)) + 
+  geom_bar(stat="identity") +  
+  theme_prism() + 
+  scale_fill_manual(values=c("#80796BFF","#374E55FF","#6A6599FF","#00A1D5FF","#DF8F44FF","#B24745FF","#79AF97FF")) +
+  geom_text(position=position_stack(vjust=0.5)) +
+  coord_flip() + facet_wrap(~SuperCategory,nrow =1,scales="free_x")
+}
+
+#results3 %>% filter(SuperCategory=="SCO") %>% bar_orthologues()
+#results3 %>% filter(SuperCategory!="SCO") %>% #
+  
+plot <- bar_orthologues(results3)
+plot
+```
+
+
+```{r BrandNewAccessoryBar,fig.height=10,fig.width=10}
+auris_clusters_not_in_b8441 <- df_label_orth_Candida %>% 
+  filter(I==0) %>% 
+  filter(Caur!=0)
+
+auris_genes_not_in_b8441 <- left_join(df_lookup_genes_Candida,
+                                      auris_clusters_not_in_b8441,
+                                      by="Cluster") %>% 
+  filter(!is.na(Category)) %>% 
+  filter(!grepl("CAAL",Locus_id)) %>% # Remove C. albicans genes
+  filter(!grepl("CXQ",Locus_id)) # Remove C. haemulonii genes
+
+df_degs_not_in_b8441 <- df %>% filter(Locus_id %in% auris_genes_not_in_b8441$Locus_id) %>% filter(DEG!="No") %>% left_join(.,auris_genes_not_in_b8441,by="Locus_id") 
+
+df_accessory_bar <- df_degs_not_in_b8441 %>% # Starting df of DEGs not found in B8441
+  mutate(Category=gsub("Unique.*","Clade_Unique",Category)) %>% # Simplify uniques as faceting for clade
+  mutate(Category=gsub("Orthogroup_AurisV","Clade_Unique_Orthogroup",Category)) %>% # Sim
+  mutate(Category=gsub("_","\n",Category)) %>% 
+  mutate(Category=gsub("AlbHaem","Alb\nHaem",Category)) %>% 
+  mutate(Category=gsub("HaemAuris","Haem\nAuris",Category)) 
+
+# Adjust levels to appear in good places
+df_accessory_bar$Category <- factor(df_accessory_bar$Category,
+                                    levels=c("Accessory\nAlb\nHaem\nAuris",
+                                             "Accessory\nHaem\nAuris",
+                                             "Accessory\nAuris",
+                                             "Clade\nUnique",
+                                             "Clade\nUnique\nOrthogroup"))
+
+tbl_accessory_bar <- df_accessory_bar %>% 
+  select(Clade,Comparison,Locus_id,DEG,Cluster,Category) %>% 
+  mutate(Present=1) %>% # Pivot wider to discern how many timepoints
+  pivot_wider(names_from = Comparison, values_from = Present,values_fill = list(Present=0)) %>% 
+  mutate(Timepoints=ifelse(`24h vs ypd`==1,ifelse(`48h vs ypd`==1,"Both","24h"),"48h")) 
+
+
+# Adjust levels so appear in good places
+tbl_accessory_bar$Timepoints <- factor(tbl_accessory_bar$Timepoints,
+                                      levels=c("24h", "Both", "48h"))
+
+plot <- tbl_accessory_bar %>% 
+  group_by(Category,DEG,Clade,Timepoints) %>% # Plot the accessory genome expression
+  summarise(Number=n()) %>% # Simple counts
+  mutate(Negative_number=ifelse(DEG=="Down",-Number,Number)) %>% # Negative n for bar chart
+  ggplot(aes(x=Timepoints,y=Negative_number,fill=Clade,label=Number)) + # Plot bar chart
+  geom_bar(stat="identity",position = position_stack()) + # Make seethrough
+  geom_text(cex=2,position = position_stack(vjust=0.5)) + # Add numbers
+  facet_wrap(~Category,nrow=1) + # Divide so as to see Specific Ref found DEGs
+  theme_prism() + # Simple theme
+  scale_fill_manual(values=c("#0072B5FF","#E18727FF","#20854EFF","#7876B1FF")) +
+  geom_hline(yintercept = 0, color = "black", size = 0.5)
+plot
+```
+
+```{r RNA-seq-meta-analysis-PCA}
+core_lookup <- df_lookup_Candida %>% 
+  mutate(Include=ifelse(grepl("SCO",Category),"Y","N")) %>% 
+  filter(grepl("B9J",Locus_id)) %>% 
+  filter(Include=="Y")
+
+fkpm_exclusive <- fkpm_all_long %>% filter(expt!="Bruno_Phagocytes") %>% 
+  filter(gene %in% core_lookup$Locus_id)
+
+# Check units
+fkpm_exclusive %>% mutate(Unit=paste(condition,expt)) %>% select(Unit) %>% unique() %>% nrow()
+
+fpkm_all_wide <- pivot_wider(fkpm_exclusive,names_from = gene, values_from = fpkm, values_fill = 0)
+
+wide_mat <- fpkm_all_wide %>% separate_wider_delim(cols = "expt", delim="_", names=c("Study","Theme")) 
+
+wide_mat_simple <- wide_mat %>% 
+  mutate(Theme=ifelse(grepl("Killi",Theme),"Killifish",
+                   ifelse(grepl("Blood",Theme),"Ex vivo Blood","Other")))
+  #wide_mat$Condition <- factor(wide_mat$Condition,
+   #                                               levels=c("I","II","III","IV","V","Water","None"))
+    mat <- as.matrix(wide_mat_simple[, -(1:3)])
+     library(ggfortify)
+    pca_res <- prcomp(mat, scale. = TRUE)
+  title = expression(paste("PCA Plot for FPKM in... many isolates (",italic("n")," = 572, 36 studies)"))
+  library(pals)
+plot <- autoplot(pca_res, data=wide_mat_simple, colour = "Theme") + labs(title=title) + theme_minimal() + scale_colour_manual(values=as.vector(alphabet(26)))
+
+plot
+```
+
+
+```{r RNA-seq-meta-analysis-variance}
+
+```
+
+
+# Supp. Fig. 3 - *C. auris* enrichment
+
+```{r fig.height=10,fig.width=20}
+df_degs_input <- read_tsv("../data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
+  rename(Locus_id=Gene) %>% # Rename column
+  mutate(`-1log10(FDR)`=-1*log10(FDR)) %>% # Calculate FDR
+  filter(Clade=="I"|Reference=="Specific") %>% # Select reference specific
+  select(-c(Reference))
+
+df_features_input <- read_tsv("../data/C_auris_features.tsv") %>% 
+  filter(!grepl("CAAL",Locus_id)) %>% 
+  filter(!grepl("CXQ85",Locus_id)) %>% 
+  filter(!grepl("CGD Name",Feature)) %>% 
+  filter(!grepl("Cluster",Feature)) %>% 
+  filter(!grepl("Not GPI",Feature)) %>% 
+  filter(!grepl("SignalP5: OTHER",Feature)) %>% 
+  filter(!grepl("No. Transmembrane Domains: 0",Feature)) %>% 
+  mutate(Feature=ifelse(grepl("No. Transmembrane Domains:",Feature),"DeepTMM Predicted TM-domain(s)",Feature)) %>% distinct()
+
+df_features_input <- rbind(df_features_input,feature_accessory)
+
+x <- rbind(enrichment("I","48h vs ypd"),
+           enrichment("II","48h vs ypd"),
+           enrichment("III","48h vs ypd"),
+           enrichment("IV","48h vs ypd"),
+           enrichment("V","48h vs ypd"),
+           
+           enrichment("I","24h vs ypd"),
+           enrichment("II","24h vs ypd"),
+           enrichment("III","24h vs ypd"),
+           enrichment("IV","24h vs ypd"),
+           enrichment("V","24h vs ypd"),
+           
+           enrichment("I","48h vs 24h"),
+           enrichment("II","48h vs 24h"),
+           enrichment("III","48h vs 24h"),
+           enrichment("IV","48h vs 24h"),
+           enrichment("V","48h vs 24h")
+)
+
+# Reduce terms with REVIGO
+x_export_revigo <- x %>% filter(grepl("GO",Feature)) %>% 
+  select(Feature) %>% unique()
+# write_csv(x_export_revigo,file="../data/C_auris_timepoints_export_revigo.csv")
+# Decided against due to loss of SIT families
+
+# Add Interclade
+df_degs_with_FDR <- read_tsv("../data/C_auris_DEGS_interclades.tsv") %>% rename(Locus_id=Gene) %>% 
+  mutate(`-1log10(FDR)`=-1*log10(FDR))
+
+# Subsets
+virulent <- c("I vs II","I vs III","IV vs II","IV vs III")
+df_degs_vir <- df_degs_with_FDR %>% filter(Clade %in% virulent)
+df_degs_input <- df_degs_vir
+
+# Enrichment
+x_vir <- rbind(enrichment("I vs II","24h"),
+           enrichment("I vs III","24h"),
+           enrichment("IV vs II","24h"),
+           enrichment("IV vs III","24h"),
+           
+           enrichment("I vs II",  "48h"),
+           enrichment("I vs III", "48h"),
+           enrichment("IV vs II","48h"),
+           enrichment("IV vs III", "48h"),
+           
+           enrichment("I vs II",  "ypd"),
+           enrichment("I vs III", "ypd"),
+           enrichment("IV vs II","ypd"),
+           enrichment("IV vs III", "ypd")
+)
+
+# Filamentation
+filamenting <- c("V vs I","V vs II","V vs III","V vs IV")
+df_degs_filamenting <- df_degs_with_FDR %>% filter(Clade %in% filamenting)
+df_degs_input <- df_degs_filamenting
+
+x_fil <- rbind(enrichment("V vs I","24h"),
+           enrichment("V vs II","24h"),
+           enrichment("V vs III","24h"),
+           enrichment("V vs IV","24h"),
+           
+           enrichment("V vs I",  "48h"),
+           enrichment("V vs II", "48h"),
+           enrichment("V vs III","48h"),
+           enrichment("V vs IV", "48h"),
+           
+           enrichment("V vs I",  "ypd"),
+           enrichment("V vs II", "ypd"),
+           enrichment("V vs III","ypd"),
+           enrichment("V vs IV", "ypd")
+)
+
+x <- x %>% mutate(Test="Timepoints")
+x_vir <- x_vir %>% mutate(Test="Interclade")
+x_fil <- x_fil %>% mutate(Test="Interclade")
+
+all_x <- rbind(x,x_vir,x_fil) %>% 
+  filter(Comparison!="ypd")
+
+
+x_better0 <- all_x %>%
+  mutate(Term=ifelse(grepl("^GO",Feature),"GO",
+              ifelse(grepl("^K",Feature),"KEGG",
+              ifelse(grepl("^PF",Feature),"PFAM","Other")))) %>% 
+  #mutate(Feature=gsub(".*:\ ","",Feature)) %>% 
+  mutate(Clade=gsub(" vs ","\nvs\n",Clade))
+
+# Reduce terms with REVIGO
+x_export_revigo <- x_better0 %>% filter(grepl("GO",Feature)) %>% 
+  select(Feature) %>% unique()
+#write_csv(x_export_revigo,file="../data/C_auris_export_revigo.csv")
+# Decided against due to loss of SIT families
+
+a <- read_tsv("../results/enrichment/Revigo_BP_Scatterplot.tsv") %>% 
+  mutate(GO_category="GO Biol. Process")
+b <- read_tsv("../results/enrichment/Revigo_CC_Scatterplot.tsv") %>% 
+  mutate(GO_category="GO Cell. Compart.")
+c <- read_tsv("../results/enrichment/Revigo_MF_Scatterplot.tsv") %>% 
+  mutate(GO_category="GO Mol. Function")
+revigo <- rbind(a,b,c) %>% 
+  mutate(Feature=paste(TermID,Name,sep=": ")) 
+revigo_remove <- revigo %>% 
+  filter(Representative != "null") 
+revigo_lookup <- revigo %>% 
+  select(Feature,GO_category)
+
+go_remove <- x_better0 %>% 
+  filter(!Feature %in% revigo_remove$Feature) %>% 
+  left_join(.,revigo_lookup,by="Feature") %>% 
+  mutate(Term=ifelse(grepl("^G",Feature),GO_category,Term))
+
+# Replace long terms
+go_remove$Feature[go_remove$Feature=="GO:0016705: oxidoreductase activity, acting on paired donors, with incorporation or reduction of molecular oxygen"] <- "GO:0016705: oxidoreductase activity (paired donors)"
+go_remove <- go_remove %>% filter(!grepl("GO:0006407",Feature))
+go_remove$Term  <- factor(go_remove$Term,levels = c("GO Biol. Process","GO Cell. Compart.","GO Mol. Function","KEGG","PFAM","Other"))
+
+# Several terms re-added manually
+# GO:0006407: rRNA export from nucleus removed/obsolete https://www.ebi.ac.uk/QuickGO/term/GO:0006407
+# GO:0005315: inorganic phosphate transmembrane transporter activity GO:0008519: ammonium transmembrane transporter activity  GO:0005536: glucose binding
+
+hotdot <- go_remove %>% #_better2 %>% 
+  #left_join(x_better1,by="Feature") %>% 
+  #filter(Category!="Exclude") %>% 
+  ggplot(aes(x=Clade,y=fct_reorder(Feature,-Mean_LogFC),colour=Mean_LogFC,size=Ratio,alpha = FDR)) + geom_point() + theme_minimal(base_size = 8) +
+  scale_y_discrete(limits=rev
+                   #,position = "right"
+                   ) +  
+  scale_alpha_continuous(trans = "reverse") + 
+  facet_grid(rows = vars(Term), 
+             cols = vars(Set,Test,Comparison),
+             scales="free",space="free",switch = "y") + 
+  theme(strip.placement = "outside") +
+  scale_colour_gradient2(
+    low = "darkblue",
+    mid = "white",
+    high = "red",
+    midpoint = 0  # Change the midpoint if needed
+  ) 
+hotdot
+
+#ggsave(hotdot,file="../figures/enrichment_auris_all_v0_2024_09_10.pdf",height=25,width=15)
+```
+
+
+```{r}
+core_lookup <- df_lookup_Candida %>% 
+  mutate(Include=ifelse(grepl("SCO",Category),"Y","N")) %>% 
+  filter(grepl("B9J",Locus_id)) %>% 
+  filter(Include=="Y")
+
+fkpm_exclusive <- fkpm_all_long %>% filter(expt!="Bruno_Phagocytes") %>% 
+  filter(gene %in% core_lookup$Locus_id)
+
+# Check units
+fkpm_exclusive %>% mutate(Unit=paste(condition,expt)) %>% select(Unit) %>% unique() %>% nrow()
+
+fpkm_all_wide <- pivot_wider(fkpm_exclusive,names_from = gene, values_from = fpkm, values_fill = 0)
+
+wide_mat <- fpkm_all_wide %>% separate_wider_delim(cols = "expt", delim="_", names=c("Study","Theme")) 
+
+wide_mat_simple <- wide_mat %>% 
+  mutate(Theme=ifelse(grepl("Killi",Theme),"Killifish",
+                   ifelse(grepl("Blood",Theme),"Ex vivo Blood","Other")))
+  #wide_mat$Condition <- factor(wide_mat$Condition,
+   #                                               levels=c("I","II","III","IV","V","Water","None"))
+    mat <- as.matrix(wide_mat_simple[, -(1:3)])
+     library(ggfortify)
+    pca_res <- prcomp(mat, scale. = TRUE)
+  title = expression(paste("PCA Plot for FPKM in... many isolates (",italic("n")," = 572, 36 studies)"))
+  library(pals)
+plot <- autoplot(pca_res, data=wide_mat_simple, colour = "Theme") + labs(title=title) + theme_minimal() + scale_colour_manual(values=as.vector(alphabet(26)))
+
+plot
+```
+
+
+# *C. auris* enrichment
+
+```{r}
+``{r AK-enrichment,fig.height=10,fig.width=10}
+# Alternate Enrichment
+hotdot1 <- x_better0 %>% #_better2 %>% 
+  #left_join(x_better1,by="Feature") %>% 
+  #filter(Category!="Exclude") %>% 
+  ggplot(aes(x=Mean_LogFC,y=fct_reorder(Feature,-Mean_LogFC),colour=Clade,size=Ratio,alpha = FDR,shape=Comparison)) + geom_point() + theme_minimal(base_size = 8) +
+  scale_y_discrete(limits=rev
+                   #,position = "right"
+                   ) +  
+  scale_alpha_continuous(trans = "reverse") + 
+  #facet_grid(rows=vars(Term),scale="free_y",space="free_y",switch = "y")+
+  facet_grid(rows = vars(Term), 
+             cols = vars(Comparison),
+             scales="free_y",space="free_y",switch = "y") + 
+  theme(strip.placement = "outside") +
+  scale_colour_nejm() 
+  #scale_colour_lancet()
+  #scale_colour_gradient2(
+  #  low = "darkblue",
+  #  mid = "white",
+  #  high = "red",
+  #  midpoint = 0  # Change the midpoint if needed
+  #) 
+hotdot1
 ```
 
