@@ -1,0 +1,160 @@
+# Figure 4
+
+```{r}
+table_vir <- read_xlsx("data/C_auris_DEGS_virulence_info.xlsx")
+
+table_vir_mod <- table_vir %>% 
+  mutate(Set=paste(Set,Comparison)) %>% 
+  group_by(Set,Category) %>% summarise(Number=n()) %>% 
+  mutate(NegativeNumber=ifelse(grepl("Down",Set),-Number,Number)) %>% 
+  mutate(Timing=ifelse(grepl("24",Set),
+                       ifelse(grepl("48h",Set),"Both\n24h & 48h","24h\nonly"),"48h\nonly")) 
+table_vir_mod$Timing <- factor(table_vir_mod$Timing,levels=c("24h\nonly","Both\n24h & 48h","48h\nonly"))
+
+# Change colours
+table_vir_mod$Category <- factor(table_vir_mod$Category,levels=
+                                   c("Cell cycle","Cell wall","Intracellular transport",
+                                     "Metabolism","Secreted hydrolase","Transcription/translation","Transmembrane transport","Uncharacterised","Other"))
+
+lancet <- scale_fill_manual(values=c("#00468BFF","#ED0000FF","#42B540FF","#0099B4FF","#925E9FFF", "#FDAF91FF","#AD002AFF","#ADB6B6FF","#1B1919FF")
+
+plot <- table_vir_mod %>%   
+  ggplot(aes(x=Timing,y=NegativeNumber,fill=Category,label=Number)) +geom_bar(stat="identity") + theme_minimal() + scale_fill_manual(values=c("#ED0000FF","#42B540FF","#0099B4FF", "#FDAF91FF","#AD002AFF","#ADB6B6FF","#1B1919FF")) +   geom_hline(yintercept = 0,    # Add horizontal line at y=0
+             color = "black",   # Set line color to black
+             size = 0.5) +
+  geom_text(position = position_stack(vjust = 0.5),size=2) +
+  labs(title = "Clade I or IV vs II or III",x="Timepoint",y="Number of DEGs")
+plot
+```
+```{r Virulence-Volcano,fig.height=10,fig.width=20}
+virulent <- c("I vs II","I vs III","IV vs II","IV vs III")
+df_degs_vir <- read_tsv("data/C_auris_DEGS_interclades_Locus_id.tsv") %>% # Load the DEG raw data
+  filter(Clade %in% virulent) %>% 
+  mutate(`-1log10(FDR)`=-1*log10(FDR)) 
+
+list_degs_vir_only <-  df_degs_vir %>% filter(DEG!="No") %>% select(Locus_id) %>% unique()
+
+df_degs_vir_mean <- df_degs_vir %>% 
+  filter(Comparison!="ypd") %>% # AKF only
+  filter(Locus_id %in% list_degs_vir_only$Locus_id) %>% # Only DEGs
+  group_by(Locus_id,Comparison) %>% # Tabulate
+  summarise(Mean_LogFC=mean(Log_FC),
+            Mean_minus_log10_FDF=mean(`-1log10(FDR)`)) # Mean values for these logFC/FDR
+
+# Add the category and name information from my spreadsheet of ALL
+lookup_gene_id <- table_vir %>% 
+  mutate(Gene_id=str_replace_all(Gene_id,"\\*","")) %>% # Remove italic markdown
+  mutate(Locus_id=str_replace(Gene_id,".*_","B9J08_00")) %>% # Restore names to join
+  select(Locus_id,Gene_id,Category) # Retain categories
+
+
+# Add names
+df_degs_vir_mean_named <- left_join(df_degs_vir_mean,df_cgd_names_modified,by="Locus_id") %>% 
+  left_join(.,lookup_gene_id,by="Locus_id") %>% # Add categories and names
+  mutate(New_name=ifelse(!is.na(Gene_id),Gene_id,CGD_name)) %>% 
+  mutate(Category=ifelse(!is.na(Category),Category,"Z_not_in_all")) %>% 
+  mutate(New_name=ifelse(!is.na(New_name),New_name,Locus_id))
+
+# Plot these as two plots with colour
+plot <- df_degs_vir_mean_named %>% 
+  ggplot(aes(x=Mean_LogFC,y=Mean_minus_log10_FDF,label=New_name,colour=Category)) + geom_point() +
+  theme_minimal() + scale_colour_manual(values=c("#ED0000FF","#42B540FF","#0099B4FF", "#FDAF91FF","#AD002AFF","#ADB6B6FF","#1B1919FF")) + geom_text_repel(cex=2,max.overlaps = 20) + 
+  facet_grid(~Comparison)
+plot
+```
+
+
+```{r Filamentation-Bar}
+# Retrieve the DEGs for all clade comparisons
+filamenting <- c("V vs I","V vs II","V vs III","V vs IV") # Choose the filament relevant comparisons
+df_degs_fil <- read_tsv("data/C_auris_DEGS_interclades_Locus_id.tsv") %>% # Load the DEG raw data
+  filter(Clade %in% filamenting) %>% 
+  mutate(`-1log10(FDR)`=-1*log10(FDR))
+
+# Now simply ask which Locus IDs are UP in all in YPD
+df_degs_ypd <- df_degs_fil %>% # Last DF
+  select(Clade,Comparison,Locus_id,DEG) %>% # Select only the genes that are relevant
+  filter(DEG!="No") %>% # Filter only Up/Down DEGs and not Non-DEGs
+  filter(Comparison=="ypd") # Choose only those in the YPD condition
+
+# Tabulate these DEGs 
+tbl_degs_ypd <- df_degs_ypd %>% # Found in YPD only
+  mutate(Locus_id_DEG=paste(Locus_id,DEG)) %>% # Create unique ID to address all sets
+  select(Clade,Locus_id_DEG) %>% # Choose only these two columns for tabulation
+  mutate(Present=1) %>% # Prepare for pivot wider
+  pivot_wider(names_from = Clade, # Pivot wider with clades as columns
+              values_from = Present, # Use 1 to fill matrix
+              values_fill = list(Present=0)) %>% # Fill missing values with zero
+  column_to_rownames(var="Locus_id_DEG") %>% # Move unique ID to rownames to enable...
+  mutate(Total = rowSums(across(everything()))) # Summary number to find DEGs across all
+
+# Lookup the DEGs and whether up or down
+df_degs_ypd_all <- tbl_degs_ypd %>% # From last table
+  filter(Total==4) %>% # Select only the Locus_ids (with Up/Down) across all comparisons
+  rownames_to_column(var="Locus_id_DEG") %>% # Reinstate column
+  separate("Locus_id_DEG", # Take unique identifier
+           into = c("Locus_id", "DEG"), # Re-form Locus_id and DEG information
+           sep = " ") %>% # Use the space sparator from "pase" above
+  select(Locus_id,DEG) %>%  # Select relevant columns only
+  mutate(YPD="Yes")
+
+# Retrieve the 84 genes that I have previously been studying
+table_fil <- read_csv("data/C_auris_DEGS_filamentous_info.csv")
+
+# Remove genes that aren't relevant
+tbl_fil <- table_fil %>% rename(Locus_id=`*C. auris* Locus ID`) %>% # Ensure consistent naming
+  mutate(DEG=word(Set, 1)) %>% 
+  left_join(.,df_degs_ypd_all,by=c("Locus_id","DEG")) %>% 
+  mutate(across(everything(), ~replace_na(., "No")))
+
+tbl_fil_not_YPD <- tbl_fil %>% filter(YPD=="No")
+
+# REPEAT
+table_fil_mod <- tbl_fil_not_YPD %>% group_by(Set,Category) %>% summarise(Number=n()) %>% 
+  mutate(NegativeNumber=ifelse(grepl("Down",Set),-Number,Number)) %>% 
+  mutate(Timing=ifelse(grepl("24h",Set),
+                       ifelse(grepl("48h",Set),"Both\n24h & 48h","24h\nonly"),"48h\nonly")) 
+table_fil_mod$Timing <- factor(table_fil_mod$Timing,levels=c("24h\nonly","Both\n24h & 48h","48h\nonly"))
+
+plot <- table_fil_mod %>%   
+  ggplot(aes(x=Timing,y=NegativeNumber,fill=Category,label=Number)) +geom_bar(stat="identity") + theme_minimal() + scale_fill_lancet() +   geom_hline(yintercept = 0,    # Add horizontal line at y=0
+             color = "black",   # Set line color to black
+             size = 0.5) +
+  geom_text(position = position_stack(vjust = 0.5),size=2) +
+  labs(title = "Clade V vs I-IV in AKF",x="Timepoint",y="Number of DEGs")
+plot
+```
+
+```{r Filamentation-Volcanoes,fig.height=10,fig.width=20}
+df_degs_filamenting_mean <- df_degs_fil %>% 
+  filter(Clade %in% filamenting) %>% 
+  filter(Comparison!="ypd") %>% 
+  group_by(Locus_id,Comparison) %>% 
+  summarise(Mean_LogFC=mean(Log_FC),Mean_minus_log10_FDF=mean(`-1log10(FDR)`))
+
+lookup_fil_all_cat <- table_fil %>% mutate(Locus_id=`*C. auris* Locus ID`) 
+
+df_degs_filamenting_mean_named <- df_degs_filamenting_mean %>% 
+  left_join(.,df_cgd_names_modified,by="Locus_id") %>% 
+  left_join(.,lookup_fil_all_cat,by="Locus_id") %>% 
+  mutate(across(everything(), ~ replace_na(.x, "Z_Not_in_all"))) 
+
+lst_fil_not_YPD <- tbl_fil_not_YPD %>% select(Locus_id)
+
+x <- df_degs_filamenting_mean_named %>% 
+  mutate(Colour = ifelse(Locus_id %in% lst_fil_not_YPD$Locus_id,
+                         Category,"Z_not_in_all"))
+
+plot <- x %>% 
+  mutate(Colour_names_only=ifelse(Colour!="Z_not_in_all",CGD_name,NA)) %>% 
+  ggplot(aes(x=Mean_LogFC,y=Mean_minus_log10_FDF,label=Colour_names_only,colour=Colour)) + geom_point() +
+  theme_minimal() + geom_text_repel(cex=2,max.overlaps = 100) +
+  facet_grid(~Comparison) + scale_colour_lancet()
+plot
+
+plot <- x %>% 
+  ggplot(aes(x=Mean_LogFC,y=Mean_minus_log10_FDF,label=CGD_name,colour=Colour)) + geom_point(alpha=0.5) +
+  theme_minimal() + geom_text_repel(cex=2,max.overlaps = 10) +
+  facet_grid(~Comparison) + scale_colour_lancet()
+plot
+```
