@@ -1,0 +1,179 @@
+# Figure 3
+
+```{r Upset-Plots,fig.height=3,fig.width=17}
+# Load data
+df <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% 
+  rename(Locus_id=Gene) %>% 
+  mutate(`-1log10(FDR)`=-1*log10(FDR))
+
+# Using FDR and logFC changes as prevously described in paper
+degs_from_logFC <- df %>% 
+  filter(Reference=="Core") %>% 
+  mutate(Condition=paste(Clade,Comparison)) %>% 
+  mutate(Condition=gsub(" ","_",Condition)) %>% 
+  mutate(up_or_down=ifelse(Log_FC<=-2,"down",
+                           ifelse(Log_FC>=2,"up","NS"))) %>% 
+  mutate(fdr_sig=ifelse(FDR<=0.001,"significant","NS")) %>% 
+  mutate(verdict=ifelse(fdr_sig=="NS","NS",up_or_down))
+
+degs_from_logFC_long <- degs_from_logFC %>% 
+  select(Locus_id,Condition,verdict) %>% 
+  pivot_wider(names_from = Condition,values_from = verdict) %>%
+  column_to_rownames(var="Locus_id")
+degs_from_logFC_long[is.na(degs_from_logFC_long)] <- "NS"
+degs_from_logFC_wide <- degs_from_logFC_long %>%
+  filter(!apply(degs_from_logFC_long, 1, function(row) all(row == "NS")))
+degs_from_logFC_trans <- as.data.frame(t(degs_from_logFC_wide))
+
+# Up
+degs_from_logFC_up <- degs_from_logFC_wide 
+degs_from_logFC_up[degs_from_logFC_up!="up"] <- 0
+degs_from_logFC_up[degs_from_logFC_up=="up"] <- 1
+degs_from_logFC_up <- degs_from_logFC_up %>% mutate(across(everything(),as.numeric))
+
+degs_24h_ypd_up <- degs_from_logFC_up %>% select(matches("24h.*ypd")) %>% 
+  filter(!apply(., 1, function(row) all(row == 0)))
+degs_48h_ypd_up <- degs_from_logFC_up %>% select(matches("48h.*ypd")) %>% 
+  filter(!apply(., 1, function(row) all(row == 0)))
+degs_48h_24h_up <- degs_from_logFC_up %>% select(matches("48h.*24h")) %>% 
+  filter(!apply(., 1, function(row) all(row == 0)))
+
+# Down
+degs_from_logFC_down <- degs_from_logFC_wide 
+degs_from_logFC_down[degs_from_logFC_down!="down"] <- 0
+degs_from_logFC_down[degs_from_logFC_down=="down"] <- 1
+degs_from_logFC_down <- degs_from_logFC_down %>% mutate(across(everything(),as.numeric))
+
+degs_24h_ypd_down <- degs_from_logFC_down %>% select(matches("24h.*ypd")) %>% 
+  filter(!apply(., 1, function(row) all(row == 0)))
+degs_48h_ypd_down <- degs_from_logFC_down %>% select(matches("48h.*ypd")) %>% 
+  filter(!apply(., 1, function(row) all(row == 0)))
+degs_48h_24h_down <- degs_from_logFC_down %>% select(matches("48h.*24h")) %>% 
+  filter(!apply(., 1, function(row) all(row == 0)))
+
+make_UpSetMat <- function(matrix){
+  names(matrix) <- sub("_.*", "", names(matrix))
+  mat <- make_comb_mat(matrix, top_n_sets = 5)
+  mat = mat[comb_degree(mat) >= 0]
+  return(mat)
+}
+
+m_list=list("Up: 24h vs YPD" = degs_24h_ypd_up,
+            "Up: 48h vs 24h" = degs_48h_24h_up,
+            "Up: 48h vs YPD" = degs_48h_ypd_up,
+            "Down: 24h vs YPD" = degs_24h_ypd_down,
+            "Down: 48h vs 24h" = degs_48h_24h_down,
+            "Down: 48h vs YPD" = degs_48h_ypd_down)
+m_list=lapply(m_list,make_UpSetMat)
+m_list=normalize_comb_mat(m_list)
+
+make_normalised_UpSet <- function(i) {
+        UpSet(m_list[[i]],
+              column_title = i,
+        top_annotation = upset_top_annotation(m_list[[i]], 
+                                              add_numbers = TRUE,
+                                              show_annotation_name = F,
+                                              numbers_rot = 0,
+                                              ylim = c(0, 77)
+                                              ),
+        right_annotation = upset_right_annotation(m_list[[i]], 
+                                                  add_numbers = TRUE,
+                                                  numbers_rot = 0,
+                                                  ylim = c(0, 207),
+                                                  show_annotation_name = F,
+                                                  axis_param = list(labels_rot = 0)
+                                                  ),
+        set_order = c("I", "II", "III", "IV" , "V"))
+}
+
+
+plot1 <- make_normalised_UpSet("Up: 24h vs YPD") 
+plot2 <- make_normalised_UpSet("Up: 48h vs 24h")
+plot3 <- make_normalised_UpSet("Up: 48h vs YPD")
+plot4 <- make_normalised_UpSet("Down: 24h vs YPD")
+plot5 <- make_normalised_UpSet("Down: 48h vs 24h")
+plot6 <- make_normalised_UpSet("Down: 48h vs YPD")
+plot1+plot2+plot3
+plot4+plot5+plot6
+```
+
+```{r Bar-Chart}
+table_fil <- read_xlsx("data/C_auris_DEGS_timepoints_info.xlsx") %>% 
+  select(1:7) %>% 
+  filter(!is.na(DEG)) %>% 
+  mutate(Timing=Comparison)
+
+table_fil$Timing[table_fil$Timing=="24h only"] <- "24h\nonly"
+table_fil$Timing[table_fil$Timing=="48h only"] <- "48h\nonly"
+table_fil$Timing[table_fil$Timing=="24h & 48h"] <- "Both\n24h & 48h"
+table_fil$Timing <- factor(table_fil$Timing,
+                           levels=c("24h\nonly","Both\n24h & 48h","48h\nonly"))
+
+table_fil_mod <- table_fil %>% 
+  group_by(DEG,Timing,Category) %>% 
+  summarise(Number=n()) %>% 
+  mutate(NegativeNumber=ifelse(grepl("Down",DEG),-Number,Number))
+
+plot <- table_fil_mod %>%   
+  ggplot(aes(x=Timing,y=NegativeNumber,fill=Category,label=Number)) +geom_bar(stat="identity") + theme_minimal() +   geom_hline(yintercept = 0,    # Add horizontal line at y=0
+             color = "black",   # Set line color to black
+             size = 0.5) +
+  geom_text(position = position_stack(vjust = 0.5),size=2) +
+  labs(title = "Clade V vs I-IV in AKF",x="Timepoint",y="Number of DEGs") +
+  scale_fill_manual(values=c("#ED0000FF","#0099B4FF","#925E9FFF", "#FDAF91FF","#AD002AFF","#ADB6B6FF","#1B1919FF"))
+plot
+
+```
+
+```{r Volcanoes,fig.height=10,fig.width=20}
+# List degs
+list_deg_locus_ids <- df %>% filter(DEG!="No") %>% filter(Reference=="Core") %>% select(Locus_id) %>% unique()
+
+# Get the right DEGs
+df_mean <- df %>% 
+  filter(Comparison!="ypd") %>% # AKF only
+  filter(Locus_id %in% list_deg_locus_ids$Locus_id) %>% # Only DEGs
+  group_by(Locus_id,Comparison) %>% # Tabulate
+  summarise(Mean_LogFC=mean(Log_FC),
+            Mean_minus_log10_FDF=mean(`-1log10(FDR)`)) # Mean values for these logFC/FDR
+
+# Add the category and name information from my spreadsheet of ALL
+lookup_gene_id <- read_xlsx("data/C_auris_DEGS_timepoints_info.xlsx") %>% 
+  mutate(Gene_id=str_replace_all(Gene_id,"\\*","")) %>% # Remove italic markdown
+  mutate(Locus_id=str_replace(Gene_id,".*_","B9J08_00")) %>% # Restore names to join
+  select(Locus_id,Gene_id,Category) # Retain categories
+
+# Function to edit names
+modify_cells <- function(x) {
+  x <- ifelse(str_detect(x, "^[0-9]"), paste0("HP_", x), x)
+  x <- str_replace(x, "(_[^_]+_)", "_")
+  return(x)
+}
+
+# Load gene names
+df_cgd_names <- read_csv("data/C_auris_unique_gene_name.csv") %>% select(gene,unique_name) %>% 
+  rename(Locus_id=gene,CGD_name=unique_name)
+
+# Apply function to entire dataframe
+df_cgd_names_modified <- df_cgd_names %>% mutate(across(everything(), modify_cells))
+
+# Add names
+df_mean_named <- left_join(df_mean,df_cgd_names_modified,by="Locus_id") %>% 
+  left_join(.,lookup_gene_id,by="Locus_id") %>% # Add categories and names
+  mutate(New_name=ifelse(!is.na(Gene_id),Gene_id,CGD_name)) %>% 
+  mutate(Category=ifelse(!is.na(Category),Category,"Z_not_in_all")) %>% 
+  mutate(New_name=ifelse(!is.na(New_name),New_name,Locus_id))
+
+
+# Replace Inf with 170 (or plots invisible)
+df_mean_named$Mean_minus_log10_FDF[df_mean_named$Mean_minus_log10_FDF=="Inf"] <- 170
+
+# Plot these as two plots with colour
+plot <- df_mean_named %>% 
+  filter(Comparison!="48h vs 24h") %>% 
+  ggplot(aes(x=Mean_LogFC,y=Mean_minus_log10_FDF,label=New_name,colour=Category)) + geom_point() +
+  theme_minimal() +  scale_colour_manual(values=c("#ED0000FF","#0099B4FF","#925E9FFF", "#FDAF91FF","#AD002AFF","#ADB6B6FF","#1B1919FF")) + geom_text_repel(cex=2,max.overlaps = 20) + 
+  facet_grid(~Comparison)
+plot
+```
+
