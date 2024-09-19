@@ -1,0 +1,147 @@
+# Figure 1
+
+```{r A-Survival-Curves}
+# Load data 
+surv <- read_xlsx("data/survival.xlsx")
+
+# Group mortality by injection
+count_surv <- surv %>% group_by(Group) %>% count(Censored_is_Zero) 
+# Convert numerical data to strings
+count_surv$Censored_is_Zero[count_surv$Censored_is_Zero==0] <- "Survived"
+count_surv$Censored_is_Zero[count_surv$Censored_is_Zero==1] <- "Died"
+# Tabulate mortality
+count_surv <- count_surv %>% 
+  pivot_wider(names_from = Censored_is_Zero, 
+              values_from = n, 
+              values_fill = 0) %>% 
+  mutate(Total = Died+Survived) %>% # Total per group
+  mutate(Mortality = Died/(Total)) %>%  # Fraction
+  mutate(`Mortality (%)` = paste(round(Mortality*100,1),"%",sep="")) # Percent
+
+# Count total number embryos 
+sum(count_surv$Total)
+
+# Survival Object
+fit <- survfit(Surv(`Survival Time (hours)`,Censored_is_Zero) ~ Group, data = surv)
+
+# Graph
+plot_surv <- ggsurvplot(fit, 
+                        surv, 
+                        title = expression(paste("Pan-clade Pathogenicity of ",
+                                                 italic("C. auris"),
+                                                 " Microinjection"
+                        )),
+                        xlab = "Time (hours)",
+                        xlim = c(0,172),
+                        break.time.by = 24,
+                        axes.offset = F,
+                        ylab = "Survival (proportion)",
+                        ylim = c(0,1.01),
+                        legend = "right",
+                        legend.labs = c("I","II","III","IV","V","Control"),
+                        legend.title = "Clade/Injection",
+                        ggtheme = my_theme,
+                        palette = "nejm") 
+plot_surv
+
+#ggsave(file = "../figures/surv_v1_2024_10_12.pdf", plot = plot_surv$plot, height = 5, width = 7, dev = cairo_pdf)
+
+# Calculate pairwise comparisons
+p <- pairwise_survdiff(Surv(`Survival Time (hours)`,Censored_is_Zero) ~ Group, data = surv)
+p <- as.data.frame(p$p.value)
+p <- rownames_to_column(p)
+p <- p %>% 
+  mutate(Comparator = rowname) %>% 
+  select(Comparator,I,II,III,IV,V) %>% 
+  mutate(I = formatC(I,format = "e",digits = 2)) %>% 
+  mutate(II = ifelse(is.na(II),"",formatC(II,format = "e",digits = 2))) %>% 
+  mutate(III = ifelse(is.na(III),"",formatC(III,format = "e",digits = 2))) %>% 
+  mutate(IV = ifelse(is.na(IV),"",formatC(IV,format = "e",digits = 2))) %>% 
+  mutate(V = ifelse(is.na(V),"",formatC(V,format = "e",digits = 2)))
+kable(p,caption = "Pairwise comparisons using Log-Rank test (Benjamini-Hochberg Correction)")#,format = "html")
+```
+
+```{r B-CFU-Bar-Chart}
+# Load raw data
+cfu_data <- read_xlsx("data/cfus.xlsx") #%>% clean_names()
+
+# Transform data
+cfus <- cfu_data # Major modification - removing water # %>% filter(injection!="Water")
+cfus[cfus=="Water"] <- "Control"
+cfus <- cfus %>% mutate(injection=factor(injection,levels=c("I","II","III","IV","V","Control")))
+
+# Rename times
+cfus[cfus=="0h"] <- "0"
+cfus[cfus=="24h"] <- "24"
+cfus[cfus=="48h"] <- "48"
+
+# Separate into each time point
+cfu_0 <- cfus %>% filter(timepoint=="0")
+cfu_24 <- cfus %>% filter(timepoint=="24")
+cfu_48 <- cfus %>% filter(timepoint=="48")
+
+# Examine 
+p_0 <- pairwise.wilcox.test(cfu_0$CFUs,cfu_0$injection,p.adjust.method = "BH")
+p_24 <- pairwise.wilcox.test(cfu_24$CFUs,cfu_24$injection,p.adjust.method = "BH")
+p_48 <- pairwise.wilcox.test(cfu_48$CFUs,cfu_48$injection,p.adjust.method = "BH")
+
+# After inspection, just one of these is significant: III vs V at 48 hours.
+stats <- data.frame("48","III","V",p_48$p.value[4,3],"**",3000000)
+colnames(stats) = c("timepoint","group1","group2","p_value","p.signif","y.position")
+
+# Ask how many CFUs at each timepoint
+cfus %>% group_by(timepoint) %>% summarise(mean(CFUs))
+
+# Graph
+
+# First replace all 0's with an alternative number
+# Using 5 is very small (<1%) to introduce error thus stats have been calculated previously above and the use of 5 is to make the logarithmic scale more sensible
+cfus$CFUs[cfus$CFUs==0]=5
+
+plot_cfus <- cfus %>% 
+  #filter(timepoint=="48h") %>% 
+  ggplot(aes(x=injection,y=CFUs)) + 
+  scale_y_continuous(transform = "log10",
+                     breaks = c(5,50,500,5000,50000,500000,5000000),
+                     labels = c("0","50","500","5K","50K","500K","5M"),
+                     expand=c(0,0),
+                     limits=c(1,5000000)) +
+  geom_bar(stat = "summary", aes(fill=injection),
+           fun = "mean",
+           alpha=0.8,
+           position = "dodge", 
+           ) +
+  geom_quasirandom(cex=1.5,
+               alpha = 0.5,
+                ) + 
+  geom_errorbar(stat = "summary", 
+                fun.data = "mean_se", 
+                position = position_dodge(width = 0.75), 
+                width = 0.25,
+                alpha = 0.8) +
+  facet_wrap(~ timepoint, 
+             nrow = 1,
+             strip.position = "bottom") + 
+
+  scale_fill_nejm() + scale_colour_nejm() +
+  my_theme +
+  theme (strip.placement = "outside") +
+  labs(title="Colony Forming Units (CFU) During Infection",
+         x="Time (hours)",
+       y="log10(Recovered CFUs per Embryo)",
+       fill = "Clade/Injection")  +
+  add_pvalue(stats,label="p.signif") +
+  coord_cartesian(ylim=c(4.5,5000000))
+plot_cfus
+
+#ggsave(file = "figures/cfus_v4_2024_05_24.pdf", plot = plot_cfus, height = 5, width = 7, dev = cairo_pdf)
+
+# Define means
+cfus_zero <- cfus
+cfus_zero$CFUs[cfus_zero$CFUs==5] <- 0
+mean_cfus <- cfus_zero %>% filter(injection!="Control") %>%  group_by(timepoint) %>% summarise(mean_cfu=mean(CFUs),cfu_sd=sd(CFUs))
+mean_cfus %>% mutate(mean_cfu_e=formatC(mean_cfu,format="e",digits=2)) %>% mutate(cfu_sd_e=formatC(cfu_sd,format="e",digits=2))
+
+mean_cfus_clade <- cfus_zero %>% group_by(injection,timepoint) %>% summarise(mean_cfu=mean(CFUs),cfu_sd=sd(CFUs))
+#mean_cfus_clade %>% mutate(e=formatC(`mean(CFUs)`,format="e",digits=2))
+```

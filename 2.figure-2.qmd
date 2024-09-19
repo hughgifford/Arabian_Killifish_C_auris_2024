@@ -1,0 +1,232 @@
+# Figure 2
+
+# Fig. 2: Host Gene Expression
+
+```{r A-Bar-Chart-A-dispar-DEGs, fig.height=10,fig.width=20}
+# Load genes of interest - with names
+ak_genes <- read_tsv("data/A_dispar_gene_names.tsv") %>% 
+  mutate(Unique_rowname=gsub("_.*DN","_",Unique_rowname)) %>% 
+  mutate(Unique_rowname=gsub("\\|c","_c",Unique_rowname))
+ak_descriptions <- read_tsv("data/A_dispar_gene_descriptions.tsv") %>% 
+  mutate(Unique_rowname=gsub("_.*DN","_",Unique_rowname)) %>% 
+  mutate(Unique_rowname=gsub("\\|c","_c",Unique_rowname)) 
+ak_logfc <- read_tsv("data/A_dispar_DEGs.tsv") %>% 
+  left_join(.,ak_genes,by="Locus_id")
+
+# Number detected transcripts
+ak_logfc %>% select(Locus_id) %>% distinct() %>% nrow()
+
+# Percent detected transcripts that are DEG in timepoints expt
+df_degs_timepoints <- ak_logfc %>% 
+  filter(Category=="Infection vs Sham Controls")
+df_degs_timepoints %>% select(Clade,Comparison,Locus_id,DEG) %>% 
+  filter(DEG!="No") %>%  # Only DEGs, or up, or down. Use this and row numbers to count.
+  mutate(Unique_id=paste(Clade,Comparison)) %>% 
+  select(Unique_id,Locus_id,DEG) %>% 
+  pivot_wider(names_from = Unique_id,values_from = DEG,values_fill = list(DEG="No")) %>% 
+  nrow()
+# Calculate percent (2.49%)
+100*(685/27481)
+
+# Function to bar plot AK DEGs
+plot_ak_degs_bar <- function(category_in){
+ak_logfc %>% 
+    filter(Category==category_in) %>% group_by(Category,Clade,Comparison,DEG) %>% summarise(Number=n()) %>% 
+  pivot_wider(names_from = DEG,values_from = Number,values_fill = list(Number=0)) %>% 
+  pivot_longer(cols = c("Up","Down","No"),names_to = "DEG",values_to = "Number") %>% 
+  # Make line
+  filter(DEG!="No") %>% 
+  mutate(FigNumber=ifelse(DEG=="Down",-Number,Number)) %>% # Create negative number
+  mutate(Comparison=gsub(" ","\n",Comparison)) %>% 
+  # Make percentage of all!!!
+  mutate(Percent=round(100*(Number/27481),1)) %>% 
+  mutate(Label=paste(Number,"\n(",Percent,")",sep="")) %>% 
+  ggplot(aes(x=Comparison,y=FigNumber,fill=DEG,label=Label)) + geom_bar(stat = "identity") +
+  geom_hline(yintercept = 0, color = "black", size = 0.5) +
+  geom_text(position = position_stack(vjust=0.5)) +
+  #facet_grid(Category~Clade) + # In order to show many 
+  facet_wrap(~Clade)+
+  theme_prism() +
+  scale_fill_manual(values = c("lightblue","pink")) +
+  scale_y_continuous(limits=c(-725,725),breaks = seq(-700, 700,100))
+}
+
+p <- plot_ak_degs_bar("Inject Controls") +
+plot_ak_degs_bar("Infection vs Sham Controls")
+p
+```
+
+```{r B-Volcano-A-dispar-DEGs-Sham,fig.height=10,fig.width=10}
+# Select only the DEGs to get their names
+ak_degs <- ak_logfc %>% filter(DEG!="No") %>% 
+  group_by(Unique_rowname) %>% 
+  summarise(Number=n()) %>% arrange(desc(Number)) %>% 
+  #filter(!grepl("^DN",Unique_rowname)) # Not many didn't have a gene name
+  left_join(.,ak_descriptions,by="Unique_rowname")
+
+# Function to tabulate AK DEGs and print upset
+upset_ak_degs <- function(df_in,clade_in,up_or_down,category_in){
+  x <- df_in %>% 
+    filter(Clade==clade_in) %>% 
+    filter(DEG==up_or_down) %>% 
+    filter(Category==category_in) %>% 
+    select(Comparison,Unique_rowname) %>% 
+    mutate(Present=1) %>% 
+    pivot_wider(names_from = Comparison,
+                values_from = Present,
+                values_fill = list(Present=0)) %>% 
+    column_to_rownames(var="Unique_rowname") %>% 
+    mutate(Total=rowSums(across(everything()))) %>% 
+    rownames_to_column(var="Unique_rowname") %>% 
+    mutate(Clade=clade_in) %>% 
+    mutate(DEG=up_or_down) %>% 
+    mutate(Category=category_in) %>% 
+    left_join(ak_descriptions,by="Unique_rowname")
+  y <- df_in %>% 
+    filter(Clade==clade_in) %>% 
+    #filter(DEG==up_or_down) %>% # Obtain accurate mean
+    filter(Category==category_in) %>% 
+    select(Unique_rowname,Log_FC,`-1*log10(FDR)`) %>% 
+    group_by(Unique_rowname) %>% 
+    summarise(Mean_logfc=mean(Log_FC),Mean_minuslog10fdr=mean(`-1*log10(FDR)`))
+  z <- left_join(x,y,by="Unique_rowname")
+  return(z)
+}
+
+x <- rbind(upset_ak_degs(ak_logfc,"24h","Up","Infection vs Sham Controls"),
+           upset_ak_degs(ak_logfc,"24h","Down","Infection vs Sham Controls"),
+           upset_ak_degs(ak_logfc,"48h","Up","Infection vs Sham Controls"),
+           upset_ak_degs(ak_logfc,"48h","Down","Infection vs Sham Controls"))
+
+y <- rbind(upset_ak_degs(ak_logfc,"24h","Up","Inject Controls"),
+           upset_ak_degs(ak_logfc,"48h","Up","Inject Controls"),
+           upset_ak_degs(ak_logfc,"24h","Down","Inject Controls"),
+           upset_ak_degs(ak_logfc,"48h","Down","Inject Controls"))
+
+# Interclade comparisons
+z1 <- upset_ak_degs(ak_logfc,"24h","Up","Interclade Comparisons")
+z2 <- upset_ak_degs(ak_logfc,"24h","Down","Interclade Comparisons")
+z3 <- upset_ak_degs(ak_logfc,"24h","Down","Interclade Comparisons")
+z4 <- upset_ak_degs(ak_logfc,"48h","Down","Interclade Comparisons")
+
+# Write file to tabulate
+df_features_collapse <- read_tsv("data/A_dispar_annotations.tsv") %>% mutate(Feature=paste(Go_term,Description)) %>% select(Locus_id,Feature) %>% unique() %>% group_by(Locus_id) %>% summarise(Features=paste(Feature,collapse=";")) 
+y_features <- left_join(y,df_features_collapse,by="Locus_id")
+x_features <- left_join(x,df_features_collapse,by="Locus_id")
+
+# Plot volcano
+volcano_plot_ak <- function(input_category,data_in){
+  data_in %>% 
+    filter(Category==input_category) %>% 
+    mutate(Colour=ifelse(DEG!="No",Comparison,"ZNon-DEG")) %>% 
+    mutate(Label=ifelse(DEG!="No",
+                        ifelse(!grepl("^DN",Unique_rowname),
+                               Unique_rowname,NA),NA)) %>% 
+    ggplot(aes(x=Log_FC,y=`-1*log10(FDR)`,colour=Colour,label=Label,shape=Clade)) +
+    geom_point() +
+    theme_minimal() +
+    #scale_colour_lancet() +
+    #pal_lancet()(8)
+    scale_colour_manual(values = c("#00468BFF","#ADB6B6FF")) +
+    geom_text_repel(max.overlaps = 100) 
+}
+
+plot <- volcano_plot_ak("Inject Controls",ak_logfc)# +
+  #facet_wrap(~Clade,nrow=1)
+plot
+
+```
+
+```{r Volcano-Plot-A-dispar-Infection,fig.height=20,fig.width=10}
+
+df_degs_input2 <- ak_logfc %>% filter(Comparison=="I vs Water")
+df_degs_input3 <- ak_logfc %>% filter(Comparison=="IV vs Water")
+ak_logfc_I_IV <- rbind(df_degs_input2,df_degs_input3) %>% filter(Clade=="48h")
+
+# Just plot clade I and IV
+plot <- volcano_plot_ak("Infection vs Sham Controls",ak_logfc_I_IV) + 
+  facet_wrap(~Comparison,ncol=1) +
+  scale_colour_manual(values=c("#BC3C29FF","#20854EFF","#ADB6B6FF"))
+plot
+```
+
+```{r Heatmap-Select-Immune-Genes, fig.height=10,fig.width=5}
+#wishlist <- c("RORB","STAT3","^IL6","^IL17","^TGF","^TNF","^IL1","^IL2","^IFN","NLRP3")
+#require(stringr)
+
+ak_logfc_infection <- ak_logfc %>% 
+  filter(Category=="Infection vs Sham Controls")
+
+#try <- ak_infection %>% filter(str_detect(Unique_rowname, paste(wishlist, collapse = "|")))# %>% select(gene_name) %>% unique() %>% filter(!str_detect(gene_name,"EMIL"))
+
+#wishlist <- read_xlsx("../tables/A_dispar_DEGs_infection_edited.xlsx",sheet = #"Select_genes_for_heatmap") %>% 
+#  filter(Include_list=="INCLUDE") %>% 
+#  select(Locus_id) #€%>% arrange(Unique_rowname)
+
+wishlist_1 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Not differentially expressed in any")
+wishlist_2 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Stress Response")
+wishlist_3 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Complement System")
+wishlist_4 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Transcription Factor and Cellular Signalling")
+wishlist_5 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Pathogen Sensors and Pattern Recognition")
+wishlist_6 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Nutritional Immunity")
+
+# Function to prepare data for heatmap
+prep_data_for_heatmap <- function(df_in,list_of_genes){
+df_in %>% 
+  mutate(Unique_id=paste(Clade,Comparison)) %>% 
+  select(Unique_id,Locus_id,Log_FC) %>% 
+        mutate(Unique_id=gsub(" vs Water","",Unique_id)) %>% 
+  pivot_wider(names_from = Unique_id,values_from = Log_FC,values_fill = list(Log_FC=0)) %>% 
+  left_join(.,ak_genes,by="Locus_id") %>% 
+  # Move filter further
+    filter(Locus_id %in% list_of_genes$Locus_id) %>% 
+  column_to_rownames(var="Unique_rowname") %>% select(-c(Locus_id))
+}
+
+# Run function
+mat_1 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_1)
+mat_2 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_2)
+mat_3 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_3)
+mat_4 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_4)
+mat_5 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_5)
+mat_6 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_6)
+
+
+
+select_heatmap_category <- function(matrix,category){
+  matrix %>% filter(Category==category) %>% 
+    column_to_rownames(var="Gene_id") %>% 
+    select(-c(Category)) 
+  }
+
+
+make_heatmap_category <- function(matrix){
+  Heatmap(matrix, 
+          heatmap_legend_param = list(title = "logFC"),
+          show_row_names = TRUE,
+          column_order = c("24h I","24h II","24h III","24h IV","24h V","48h I","48h II","48h III","48h IV","48h V"),
+          cluster_columns = FALSE,
+          col = colorRamp2(c(-10, 0, 10), c("blue", "white", "red")))
+}
+
+rownames(mat_1) <- gsub("_c.*","",rownames(mat_1))
+rownames(mat_2) <- gsub("_c.*","",rownames(mat_2))
+rownames(mat_3) <- gsub("_c.*","",rownames(mat_3))
+rownames(mat_4) <- gsub("_c.*","",rownames(mat_4))
+rownames(mat_5) <- gsub("_c.*","",rownames(mat_5))
+rownames(mat_6) <- gsub("_c.*","",rownames(mat_6))
+
+p <- make_heatmap_category(mat_2) %v%
+make_heatmap_category(mat_3) %v%
+make_heatmap_category(mat_5) %v%
+  make_heatmap_category(mat_6) %v%
+make_heatmap_category(mat_4) %v%
+  make_heatmap_category(mat_1) 
+p
+```
+
+
+
+
+
+
