@@ -38,7 +38,7 @@ ak_logfc %>%
   filter(DEG!="No") %>% 
   mutate(FigNumber=ifelse(DEG=="Down",-Number,Number)) %>% # Create negative number
   mutate(Comparison=gsub(" ","\n",Comparison)) %>% 
-  # Make percentage of all!!!
+  # Make percentage of all
   mutate(Percent=round(100*(Number/27481),1)) %>% 
   mutate(Label=paste(Number,"\n(",Percent,")",sep="")) %>% 
   ggplot(aes(x=Comparison,y=FigNumber,fill=DEG,label=Label)) + geom_bar(stat = "identity") +
@@ -151,17 +151,8 @@ plot
 ```
 
 ```{r Heatmap-Select-Immune-Genes, fig.height=10,fig.width=5}
-#wishlist <- c("RORB","STAT3","^IL6","^IL17","^TGF","^TNF","^IL1","^IL2","^IFN","NLRP3")
-#require(stringr)
-
 ak_logfc_infection <- ak_logfc %>% 
   filter(Category=="Infection vs Sham Controls")
-
-#try <- ak_infection %>% filter(str_detect(Unique_rowname, paste(wishlist, collapse = "|")))# %>% select(gene_name) %>% unique() %>% filter(!str_detect(gene_name,"EMIL"))
-
-#wishlist <- read_xlsx("../tables/A_dispar_DEGs_infection_edited.xlsx",sheet = #"Select_genes_for_heatmap") %>% 
-#  filter(Include_list=="INCLUDE") %>% 
-#  select(Locus_id) #€%>% arrange(Unique_rowname)
 
 wishlist_1 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Not differentially expressed in any")
 wishlist_2 <- read_xlsx("data/A_dispar_immunity.xlsx") %>% filter(Category=="Stress Response")
@@ -191,14 +182,11 @@ mat_4 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_4)
 mat_5 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_5)
 mat_6 <- prep_data_for_heatmap(ak_logfc_infection,wishlist_6)
 
-
-
 select_heatmap_category <- function(matrix,category){
   matrix %>% filter(Category==category) %>% 
     column_to_rownames(var="Gene_id") %>% 
     select(-c(Category)) 
   }
-
 
 make_heatmap_category <- function(matrix){
   Heatmap(matrix, 
@@ -217,10 +205,10 @@ rownames(mat_5) <- gsub("_c.*","",rownames(mat_5))
 rownames(mat_6) <- gsub("_c.*","",rownames(mat_6))
 
 p <- make_heatmap_category(mat_2) %v%
-make_heatmap_category(mat_3) %v%
-make_heatmap_category(mat_5) %v%
+  make_heatmap_category(mat_3) %v%
+  make_heatmap_category(mat_5) %v%
   make_heatmap_category(mat_6) %v%
-make_heatmap_category(mat_4) %v%
+  make_heatmap_category(mat_4) %v%
   make_heatmap_category(mat_1) 
 p
 ```
