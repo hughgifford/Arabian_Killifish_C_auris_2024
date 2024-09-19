@@ -2,6 +2,8 @@
 
 ## High Performance Computing Cluster
 
+This is only necessary for data processing as detailed in the manuscript. For analysis and plotting of processed data, please proceed to unzipping gzipped datasets.
+
 ```{bash,eval=F}
 cd mamba_environments
 for i in *;do mamba env create -f $i;done
