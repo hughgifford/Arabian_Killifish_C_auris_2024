@@ -527,6 +527,8 @@ feature_accessory_clade <- define_accessory %>%
   unique()
 
 table(feature_accessory_clade$Clade)
+
+feature_accessory <-  feature_accessory_clade %>% select(-c(Clade))
 ```
 ```{r Plot-Accessory-DEGs,fig.height=10,fig.width=20}
 strains <- c("Calb","III","I","II","IV","V","Chaem") # Strain names
@@ -717,13 +719,13 @@ plot
 # Supp. Fig. 3 - *C. auris* enrichment
 
 ```{r fig.height=10,fig.width=20}
-df_degs_input <- read_tsv("../data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
+df_degs_input <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
   rename(Locus_id=Gene) %>% # Rename column
   mutate(`-1log10(FDR)`=-1*log10(FDR)) %>% # Calculate FDR
   filter(Clade=="I"|Reference=="Specific") %>% # Select reference specific
   select(-c(Reference))
 
-df_features_input <- read_tsv("../data/C_auris_features.tsv") %>% 
+df_features_input <- read_tsv("data/C_auris_features.tsv") %>% 
   filter(!grepl("CAAL",Locus_id)) %>% 
   filter(!grepl("CXQ85",Locus_id)) %>% 
   filter(!grepl("CGD Name",Feature)) %>% 
@@ -754,14 +756,8 @@ x <- rbind(enrichment("I","48h vs ypd"),
            enrichment("V","48h vs 24h")
 )
 
-# Reduce terms with REVIGO
-x_export_revigo <- x %>% filter(grepl("GO",Feature)) %>% 
-  select(Feature) %>% unique()
-# write_csv(x_export_revigo,file="../data/C_auris_timepoints_export_revigo.csv")
-# Decided against due to loss of SIT families
-
 # Add Interclade
-df_degs_with_FDR <- read_tsv("../data/C_auris_DEGS_interclades.tsv") %>% rename(Locus_id=Gene) %>% 
+df_degs_with_FDR <- read_tsv("data/C_auris_DEGS_interclades_Locus_id.tsv") %>% 
   mutate(`-1log10(FDR)`=-1*log10(FDR))
 
 # Subsets
@@ -814,6 +810,13 @@ x_fil <- x_fil %>% mutate(Test="Interclade")
 all_x <- rbind(x,x_vir,x_fil) %>% 
   filter(Comparison!="ypd")
 
+x_better0 <- all_x %>%
+  mutate(Term=ifelse(grepl("^GO",Feature),"GO",
+              ifelse(grepl("^K",Feature),"KEGG",
+              ifelse(grepl("^PF",Feature),"PFAM","Other")))) %>% 
+  #mutate(Feature=gsub(".*:\ ","",Feature)) %>% 
+  mutate(Clade=gsub(" vs ","\nvs\n",Clade))
+
 
 x_better0 <- all_x %>%
   mutate(Term=ifelse(grepl("^GO",Feature),"GO",
@@ -822,24 +825,8 @@ x_better0 <- all_x %>%
   #mutate(Feature=gsub(".*:\ ","",Feature)) %>% 
   mutate(Clade=gsub(" vs ","\nvs\n",Clade))
 
-# Reduce terms with REVIGO
-x_export_revigo <- x_better0 %>% filter(grepl("GO",Feature)) %>% 
-  select(Feature) %>% unique()
-#write_csv(x_export_revigo,file="../data/C_auris_export_revigo.csv")
-# Decided against due to loss of SIT families
-
-a <- read_tsv("../results/enrichment/Revigo_BP_Scatterplot.tsv") %>% 
-  mutate(GO_category="GO Biol. Process")
-b <- read_tsv("../results/enrichment/Revigo_CC_Scatterplot.tsv") %>% 
-  mutate(GO_category="GO Cell. Compart.")
-c <- read_tsv("../results/enrichment/Revigo_MF_Scatterplot.tsv") %>% 
-  mutate(GO_category="GO Mol. Function")
-revigo <- rbind(a,b,c) %>% 
-  mutate(Feature=paste(TermID,Name,sep=": ")) 
-revigo_remove <- revigo %>% 
-  filter(Representative != "null") 
-revigo_lookup <- revigo %>% 
-  select(Feature,GO_category)
+revigo_lookup <- read_tsv("data/C_auris_REVIGO.txt")
+revigo_remove <- read_tsv("data/C_auris_REVIGO_remove.txt")
 
 go_remove <- x_better0 %>% 
   filter(!Feature %in% revigo_remove$Feature) %>% 
@@ -874,69 +861,5 @@ hotdot <- go_remove %>% #_better2 %>%
     midpoint = 0  # Change the midpoint if needed
   ) 
 hotdot
-
-#ggsave(hotdot,file="../figures/enrichment_auris_all_v0_2024_09_10.pdf",height=25,width=15)
-```
-
-
-```{r}
-core_lookup <- df_lookup_Candida %>% 
-  mutate(Include=ifelse(grepl("SCO",Category),"Y","N")) %>% 
-  filter(grepl("B9J",Locus_id)) %>% 
-  filter(Include=="Y")
-
-fkpm_exclusive <- fkpm_all_long %>% filter(expt!="Bruno_Phagocytes") %>% 
-  filter(gene %in% core_lookup$Locus_id)
-
-# Check units
-fkpm_exclusive %>% mutate(Unit=paste(condition,expt)) %>% select(Unit) %>% unique() %>% nrow()
-
-fpkm_all_wide <- pivot_wider(fkpm_exclusive,names_from = gene, values_from = fpkm, values_fill = 0)
-
-wide_mat <- fpkm_all_wide %>% separate_wider_delim(cols = "expt", delim="_", names=c("Study","Theme")) 
-
-wide_mat_simple <- wide_mat %>% 
-  mutate(Theme=ifelse(grepl("Killi",Theme),"Killifish",
-                   ifelse(grepl("Blood",Theme),"Ex vivo Blood","Other")))
-  #wide_mat$Condition <- factor(wide_mat$Condition,
-   #                                               levels=c("I","II","III","IV","V","Water","None"))
-    mat <- as.matrix(wide_mat_simple[, -(1:3)])
-     library(ggfortify)
-    pca_res <- prcomp(mat, scale. = TRUE)
-  title = expression(paste("PCA Plot for FPKM in... many isolates (",italic("n")," = 572, 36 studies)"))
-  library(pals)
-plot <- autoplot(pca_res, data=wide_mat_simple, colour = "Theme") + labs(title=title) + theme_minimal() + scale_colour_manual(values=as.vector(alphabet(26)))
-
-plot
-```
-
-
-# *C. auris* enrichment
-
-```{r}
-``{r AK-enrichment,fig.height=10,fig.width=10}
-# Alternate Enrichment
-hotdot1 <- x_better0 %>% #_better2 %>% 
-  #left_join(x_better1,by="Feature") %>% 
-  #filter(Category!="Exclude") %>% 
-  ggplot(aes(x=Mean_LogFC,y=fct_reorder(Feature,-Mean_LogFC),colour=Clade,size=Ratio,alpha = FDR,shape=Comparison)) + geom_point() + theme_minimal(base_size = 8) +
-  scale_y_discrete(limits=rev
-                   #,position = "right"
-                   ) +  
-  scale_alpha_continuous(trans = "reverse") + 
-  #facet_grid(rows=vars(Term),scale="free_y",space="free_y",switch = "y")+
-  facet_grid(rows = vars(Term), 
-             cols = vars(Comparison),
-             scales="free_y",space="free_y",switch = "y") + 
-  theme(strip.placement = "outside") +
-  scale_colour_nejm() 
-  #scale_colour_lancet()
-  #scale_colour_gradient2(
-  #  low = "darkblue",
-  #  mid = "white",
-  #  high = "red",
-  #  midpoint = 0  # Change the midpoint if needed
-  #) 
-hotdot1
 ```
 
