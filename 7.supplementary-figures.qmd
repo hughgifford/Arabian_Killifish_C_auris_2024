@@ -725,6 +725,12 @@ df_degs_input <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
   filter(Clade=="I"|Reference=="Specific") %>% # Select reference specific
   select(-c(Reference))
 
+# Check terms
+check <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
+  rename(Locus_id=Gene) %>% filter(Reference=="Core") %>% 
+  filter(Comparison=="48h vs ypd") %>% 
+  filter(DEG=="Up")
+
 df_features_input <- read_tsv("data/C_auris_features.tsv") %>% 
   filter(!grepl("CAAL",Locus_id)) %>% 
   filter(!grepl("CXQ85",Locus_id)) %>% 
@@ -765,6 +771,14 @@ virulent <- c("I vs II","I vs III","IV vs II","IV vs III")
 df_degs_vir <- df_degs_with_FDR %>% filter(Clade %in% virulent)
 df_degs_input <- df_degs_vir
 
+# Check of sets of upregulated genes e.g. accessory
+df_degs_input %>% filter(DEG=="Up") %>% filter(Comparison=="48h") %>% 
+  filter(Clade!="IV vs II") %>% filter(Clade!="I vs II") %>% 
+  left_join(df_features_input) %>% 
+  filter(grepl("siderophore",Feature)) %>% distinct() %>% 
+  left_join(.,df_cgd_names_modified) %>% 
+  select(CGD_name,Locus_id,Log_FC,Clade)
+
 # Enrichment
 x_vir <- rbind(enrichment("I vs II","24h"),
            enrichment("I vs III","24h"),
@@ -786,6 +800,12 @@ x_vir <- rbind(enrichment("I vs II","24h"),
 filamenting <- c("V vs I","V vs II","V vs III","V vs IV")
 df_degs_filamenting <- df_degs_with_FDR %>% filter(Clade %in% filamenting)
 df_degs_input <- df_degs_filamenting
+
+df_degs_input %>% filter(DEG=="Up") %>% 
+  left_join(df_features_input) %>% 
+  filter(grepl("siderophore",Feature)) %>% distinct() %>% 
+  left_join(.,df_cgd_names_modified) %>% 
+  select(CGD_name,Locus_id,Log_FC,Clade) %>% unique()
 
 x_fil <- rbind(enrichment("V vs I","24h"),
            enrichment("V vs II","24h"),
