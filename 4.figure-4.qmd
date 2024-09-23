@@ -63,112 +63,7 @@ plot <- df_degs_vir_mean_named %>%
 plot
 ```
 
-```{r MTL-data}
-# Load Clade-specific FPKM files - all reference genomes
-df_fpkm_raw <- read_tsv("data/C_auris_FPKM_five_references.tsv",col_names = F)
-colnames(df_fpkm_raw) <- c("Experiment","Reference_genome","Locus_id","FPKM")
-df_fpkm <- df_fpkm_raw %>% separate(Experiment,into=c("Clade","Condition","Replicate"),sep="_",remove = F) 
-# Select only clade specific reference genome
-df_fpkm_specific <- df_fpkm %>% filter(!(Reference_genome == "B8441" & Clade != "I"))
-# Select only clade I as reference genome
-df_fpkm_b8441 <- df_fpkm %>% filter(Reference_genome == "B8441")
-# Check numbers of genes
-#df_fpkm_specific %>% group_by(Clade,Reference_genome) %>% summarise(Number=n()) %>% mutate(Genes=Number/9)
-#df_fpkm_specific %>% group_by(Clade) %>% summarise(Mean=mean(FPKM))
 
-# Load gff3 files at genes of interest
-df_gff_raw <- read_tsv("data/C_auris_five_clade_summary.gff3",col_names = F) %>% select(X1,X2,X5,X6,X8,X10,X11)
-colnames(df_gff_raw) <- c("Reference","Contig","Start","Stop","Strand","Locus_id","Gene_id")
-df_gff <- df_gff_raw %>% separate(Reference,into=c("Clade","Reference_genome"),sep = "_",remove = T) %>% 
-  mutate(Locus_id=gsub(";.*","",Locus_id)) %>% 
-  mutate(Gene_number=as.numeric(gsub(".*_","",Locus_id)))
-## Note SCF1 gene in cluster 0004466: B9J08_001458, CJI96_0001187, CJI97_001146, CJJ09_003711, FDK38_003638
-## ERG11 in 0002529: B9J08_001448, CJI96_0001197, CJI97_001156, CJJ09_003699, FDK38_003627
-# Select genes 2 above or below
-df_gff_mtl_broad <- df_gff %>% 
-  filter(Clade=="I" & between(Gene_number,5589,5590) |
-           Clade=="I" & between(Gene_number,1446,1460) |
-           Clade=="II" & between(Gene_number,1185,1199) | 
-           Clade=="III" & between(Gene_number,1144,1158) |
-           Clade=="IV" & between(Gene_number,3697,3713) |
-           Clade=="V" & between(Gene_number,3625,3640)) %>% 
-  mutate(Level=1)
-# Re-arrange with fewer genes - 3 above ERG11, 1 below SCF1
-df_gff_mtl_narrow <- df_gff %>% 
-  filter(Clade=="I" & between(Gene_number,5589,5590) |
-           Clade=="I" & between(Gene_number,1451,1457) |
-           Clade=="II" & between(Gene_number,1188,1194) | 
-           Clade=="III" & between(Gene_number,1147,1153) |
-           Clade=="IV" & between(Gene_number,3702,3710) |
-           Clade=="V" & between(Gene_number,3630,3637)) %>% 
-  mutate(Level=1)
-# Reverse II and III locus
-df_gff_mtl_I_IV_V <- df_gff_mtl_broad %>% filter(Clade!="II" & Clade !="III")
-df_gff_mtl_II_III <- df_gff_mtl_broad %>% filter(Clade!="I" & Clade !="IV" & Clade !="V") %>% 
-  mutate(Start=-Start) %>% mutate(Stop=-Stop)
-df_mtl_broad <- rbind(df_gff_mtl_I_IV_V,df_gff_mtl_II_III)
-df_gff_mtl_I_IV_V <- df_gff_mtl_narrow %>% filter(Clade!="II" & Clade !="III")
-df_gff_mtl_II_III <- df_gff_mtl_narrow %>% filter(Clade!="I" & Clade !="IV" & Clade !="V") %>% 
-  mutate(Start=-Start) %>% mutate(Stop=-Stop)
-df_mtl_narrow <- rbind(df_gff_mtl_I_IV_V,df_gff_mtl_II_III)
-
-# Bind and add orthogroups
-df_orth <- read_tsv("data/orthofinder.GENE_CLUSTERS_SUMMARIES.clusters_and_uniques",col_names = F) %>% select(X1,X5)
-colnames(df_orth) <- c("Cluster","Locus_id")
-df_mtl_broad_plot <- df_mtl_broad %>% 
-  left_join(.,df_orth,by="Locus_id") %>% 
-  left_join(.,df_cgd_names_modified,by="Locus_id") 
-df_mtl_narrow_plot <- df_mtl_narrow %>% 
-  left_join(.,df_orth,by="Locus_id") %>% 
-  left_join(.,df_cgd_names_modified,by="Locus_id") 
-
-# Simple background graph
-df_mtl_broad_plot %>% ggplot(aes(x=Start,xend=Stop,y=Level,yend=Level, colour=Cluster)) + geom_segment() + facet_wrap(~Clade,ncol=1,scales = "free_x") + theme_prism()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) +  theme(strip.placement = "outside")
-```
-
-
-```{r MTL-broad-view-ERG11-SCF1}
-# Left join with CGD names, cluster identities, clade, condition, rep
-df_mtl_fpkm_broad_plot <- df_fpkm_specific %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_broad_plot,by="Locus_id") %>% 
-  filter(!is.na(Clade))
-
-# An interesting graph because of ERG11 (green) and SCF1 (purple)
-df_mtl_fpkm_broad_plot %>% mutate(Cluster=gsub("uniq_.*","Other",Cluster)) %>% ggplot(aes(x=Start,xend=Stop,y=FPKM,yend=FPKM, colour=Cluster)) + geom_segment() + facet_wrap(Condition~Clade,ncol=5,scales = "free_x") + theme_minimal()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) #+ scale_color_bmj()
-```
-
-```{r MTL-narrow-clade-specific}
-df_mtl_fpkm_narrow_plot <- df_fpkm_specific %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
-  filter(!is.na(Clade))
-
-# Focus on MTL
-name_cluster <- read_csv("data/mtl_cluster.txt")
-name_cluster$Figure_name <- factor(name_cluster$Figure_name,levels=
-  c("RMT2","MAS2","PAP1","OBPA","PIKA","HP","RCY1","MTLa1","Other"))
-p1 <- df_mtl_fpkm_narrow_plot %>% mutate(Cluster=gsub("uniq_.*","Other",Cluster)) %>% 
-  left_join(.,name_cluster,by="Cluster") %>% 
-  ggplot(aes(x=Start,xend=Stop,y=FPKM,yend=FPKM, colour=Figure_name)) + geom_segment() + facet_wrap(Condition~Clade,ncol=5,scales = "free_x") + theme_minimal()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) +   #coord_cartesian(ylim = c(0, 300)) + 
-  scale_color_bmj() + theme(legend.position = "bottom")
-p1
-# Same graph with B8441 only
-```
-
-```{r MTL-narrow-B8441}
-df_mtl_fpkm_narrow_plot <- df_fpkm_ %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
-  filter(!is.na(Clade))
-
-df_mtl_fpkm_b8441 <- df_fpkm_b8441 %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
-  filter(!is.na(Clade.y))
-p2 <- df_mtl_fpkm_b8441 %>% mutate(Cluster=gsub("uniq_.*","Other",Cluster)) %>% 
-  left_join(.,name_cluster,by="Cluster") %>% 
-  ggplot(aes(x=Start,xend=Stop,y=FPKM,yend=FPKM, colour=Figure_name)) + geom_segment() + facet_wrap(Condition~Clade.x,ncol=5,scales = "free_x") + theme_minimal()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) + #lims(y = c(0, 400)) +
-  scale_color_bmj() + theme(legend.position = "bottom")
-
-p2
-```
-
-```{r MTL-side-by-side}
-p2+p1
-```
 
 
 
@@ -268,8 +163,116 @@ plot <- x %>%
 plot
 ```
 
+```{r MTL-data}
+# Load Clade-specific FPKM files - all reference genomes
+df_fpkm_raw <- read_tsv("data/C_auris_FPKM_five_references.tsv",col_names = F)
+colnames(df_fpkm_raw) <- c("Experiment","Reference_genome","Locus_id","FPKM")
+df_fpkm <- df_fpkm_raw %>% separate(Experiment,into=c("Clade","Condition","Replicate"),sep="_",remove = F) 
+# Select only clade specific reference genome
+df_fpkm_specific <- df_fpkm %>% filter(!(Reference_genome == "B8441" & Clade != "I"))
+# Select only clade I as reference genome
+df_fpkm_b8441 <- df_fpkm %>% filter(Reference_genome == "B8441")
+# Check numbers of genes
+#df_fpkm_specific %>% group_by(Clade,Reference_genome) %>% summarise(Number=n()) %>% mutate(Genes=Number/9)
+#df_fpkm_specific %>% group_by(Clade) %>% summarise(Mean=mean(FPKM))
 
-```{r Cluster-FPKM-Check, fig.height=9,fig.width=7}
+# Load gff3 files at genes of interest
+df_gff_raw <- read_tsv("data/C_auris_five_clade_summary.gff3",col_names = F) %>% select(X1,X2,X5,X6,X8,X10,X11)
+colnames(df_gff_raw) <- c("Reference","Contig","Start","Stop","Strand","Locus_id","Gene_id")
+df_gff <- df_gff_raw %>% separate(Reference,into=c("Clade","Reference_genome"),sep = "_",remove = T) %>% 
+  mutate(Locus_id=gsub(";.*","",Locus_id)) %>% 
+  mutate(Gene_number=as.numeric(gsub(".*_","",Locus_id)))
+## Note SCF1 gene in cluster 0004466: B9J08_001458, CJI96_0001187, CJI97_001146, CJJ09_003711, FDK38_003638
+## ERG11 in 0002529: B9J08_001448, CJI96_0001197, CJI97_001156, CJJ09_003699, FDK38_003627
+# Select genes 2 above or below
+df_gff_mtl_broad <- df_gff %>% 
+  filter(Clade=="I" & between(Gene_number,5589,5590) |
+           Clade=="I" & between(Gene_number,1446,1460) |
+           Clade=="II" & between(Gene_number,1185,1199) | 
+           Clade=="III" & between(Gene_number,1144,1158) |
+           Clade=="IV" & between(Gene_number,3697,3713) |
+           Clade=="V" & between(Gene_number,3625,3640)) %>% 
+  mutate(Level=1)
+# Re-arrange with fewer genes - 3 above ERG11, 1 below SCF1
+df_gff_mtl_narrow <- df_gff %>% 
+  filter(Clade=="I" & between(Gene_number,5589,5590) |
+           Clade=="I" & between(Gene_number,1451,1457) |
+           Clade=="II" & between(Gene_number,1188,1194) | 
+           Clade=="III" & between(Gene_number,1147,1153) |
+           Clade=="IV" & between(Gene_number,3702,3710) |
+           Clade=="V" & between(Gene_number,3630,3637)) %>% 
+  mutate(Level=1)
+# Reverse II and III locus
+df_gff_mtl_I_IV_V <- df_gff_mtl_broad %>% filter(Clade!="II" & Clade !="III")
+df_gff_mtl_II_III <- df_gff_mtl_broad %>% filter(Clade!="I" & Clade !="IV" & Clade !="V") %>% 
+  mutate(Start=-Start) %>% mutate(Stop=-Stop)
+df_mtl_broad <- rbind(df_gff_mtl_I_IV_V,df_gff_mtl_II_III)
+df_gff_mtl_I_IV_V <- df_gff_mtl_narrow %>% filter(Clade!="II" & Clade !="III")
+df_gff_mtl_II_III <- df_gff_mtl_narrow %>% filter(Clade!="I" & Clade !="IV" & Clade !="V") %>% 
+  mutate(Start=-Start) %>% mutate(Stop=-Stop)
+df_mtl_narrow <- rbind(df_gff_mtl_I_IV_V,df_gff_mtl_II_III)
+
+# Bind and add orthogroups
+df_orth <- read_tsv("data/orthofinder.GENE_CLUSTERS_SUMMARIES.clusters_and_uniques",col_names = F) %>% select(X1,X5)
+colnames(df_orth) <- c("Cluster","Locus_id")
+df_mtl_broad_plot <- df_mtl_broad %>% 
+  left_join(.,df_orth,by="Locus_id") %>% 
+  left_join(.,df_cgd_names_modified,by="Locus_id") 
+df_mtl_narrow_plot <- df_mtl_narrow %>% 
+  left_join(.,df_orth,by="Locus_id") %>% 
+  left_join(.,df_cgd_names_modified,by="Locus_id") 
+
+# Simple background graph
+df_mtl_broad_plot %>% ggplot(aes(x=Start,xend=Stop,y=Level,yend=Level, colour=Cluster)) + geom_segment() + facet_wrap(~Clade,ncol=1,scales = "free_x") + theme_prism()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) +  theme(strip.placement = "outside")
+```
+
+
+```{r MTL-broad-view-ERG11-SCF1}
+# Left join with CGD names, cluster identities, clade, condition, rep
+df_mtl_fpkm_broad_plot <- df_fpkm_specific %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_broad_plot,by="Locus_id") %>% 
+  filter(!is.na(Clade))
+
+# An interesting graph because of ERG11 (green) and SCF1 (purple)
+df_mtl_fpkm_broad_plot %>% mutate(Cluster=gsub("uniq_.*","Other",Cluster)) %>% ggplot(aes(x=Start,xend=Stop,y=FPKM,yend=FPKM, colour=Cluster)) + geom_segment() + facet_wrap(Condition~Clade,ncol=5,scales = "free_x") + theme_minimal()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) #+ scale_color_bmj()
+```
+
+```{r MTL-narrow-clade-specific}
+df_mtl_fpkm_narrow_plot <- df_fpkm_specific %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
+  filter(!is.na(Clade))
+
+# Focus on MTL
+name_cluster <- read_csv("data/mtl_cluster.txt")
+name_cluster$Figure_name <- factor(name_cluster$Figure_name,levels=
+  c("RMT2","MAS2","PAP1","OBPA","PIKA","HP","RCY1","MTLa1","Other"))
+p1 <- df_mtl_fpkm_narrow_plot %>% mutate(Cluster=gsub("uniq_.*","Other",Cluster)) %>% 
+  left_join(.,name_cluster,by="Cluster") %>% 
+  ggplot(aes(x=Start,xend=Stop,y=FPKM,yend=FPKM, colour=Figure_name)) + geom_segment() + facet_wrap(Condition~Clade,ncol=5,scales = "free_x") + theme_minimal()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) + lims(y = c(0, 400)) +   #coord_cartesian(ylim = c(0, 300)) + 
+  scale_color_bmj() + theme(legend.position = "bottom")
+p1
+# Same graph with B8441 only
+```
+
+```{r MTL-narrow-B8441}
+df_mtl_fpkm_narrow_plot <- df_fpkm_ %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
+  filter(!is.na(Clade))
+
+df_mtl_fpkm_b8441 <- df_fpkm_b8441 %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
+  filter(!is.na(Clade.y))
+p2 <- df_mtl_fpkm_b8441 %>% mutate(Cluster=gsub("uniq_.*","Other",Cluster)) %>% 
+  left_join(.,name_cluster,by="Cluster") %>% 
+  ggplot(aes(x=Start,xend=Stop,y=FPKM,yend=FPKM, colour=Figure_name)) + geom_segment() + facet_wrap(Condition~Clade.x,ncol=5,scales = "free_x") + theme_minimal()+ theme(axis.text.x = element_blank(),axis.ticks.x = element_blank(),axis.line.x = element_blank()) + lims(y = c(0, 400)) +
+  scale_color_bmj() + theme(legend.position = "bottom")
+
+p2
+```
+
+```{r MTL-side-by-side,fig.height=6,fig.width=10}
+p <- p2+p1
+p
+```
+
+
+```{r Cluster-FPKM-Check}
 # Get genes to check
 check_cluster <- left_join(df_orth,df_cgd_names_modified,by="Locus_id") %>% filter(!is.na(CGD_name)) 
 check_cluster$CGD_name[check_cluster$CGD_name=="RBT1_1458"] <- "SCF1_1458"
@@ -277,44 +280,89 @@ checklist <- read_csv("data/fpkm_checklist.txt")
 virulent <- checklist %>% filter(Set=="Virulent")
 filament <- checklist %>% filter(Set=="Filament")
 check_cluster_select_v <- check_cluster %>% left_join(virulent,by="CGD_name") %>% filter(!is.na(Set)) %>% select(-c(Locus_id))
-check_cluster_select_f <- check_cluster %>% left_join(filament,by="CGD_name") %>% filter(!is.na(Set)) %>% select(-c(Locus_id))
+check_cluster_select_f <- check_cluster %>% left_join(filament,by="CGD_name") %>% filter(!is.na(Set)) %>% select(-c(Locus_id))  # Exclude HPs
 
-df_fpkm_specific_clusters <- left_join(df_fpkm_specific,df_orth,by="Locus_id") %>% 
+df_fpkm_specific_clusters_v <- left_join(df_fpkm_specific,df_orth,by="Locus_id") %>% 
   left_join(.,check_cluster_select_v,by="Cluster") %>% 
   filter(!is.na(Set))
 
-df_fpkm_full_info_v <- df_fpkm_specific_clusters %>% 
-  mutate(Status=ifelse(Set=="Virulent" & (Clade=="I" | Clade =="IV"),"More Virulent",
-                ifelse(Set=="Virulent" & (Clade=="II" | Clade == "III"), "Less Virulent",
-                ifelse(Set=="Filament" & Clade =="V","Filamentous","Afilamentous")))) %>% 
-  filter(Set=="Virulent") %>% filter(Clade!="V") 
+df_fpkm_specific_clusters_v_in <- df_fpkm_specific_clusters_v %>% 
+    mutate(Status=ifelse(Set=="Virulent" & (Clade=="I" | Clade =="IV"),"+",
+                         ifelse(Set=="Virulent" & (Clade=="II" | Clade == "III"), "-",
+                                ifelse(Set=="Filament" & Clade =="V","F","N")))) %>% 
+    filter(Set=="Virulent") %>% filter(Clade!="V") 
 
-# Stat compare means - works but not adjusted
-df_fpkm_full_info_v$Status <- as.factor(df_fpkm_full_info_v$Status)
-df_fpkm_full_info_v %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_point() + theme_minimal() + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=1,scales="free_y") +stat_compare_means(comparisons = list(c("More Virulent","Less Virulent")),method = "t.test", aes(label = "p.signif")) + coord_flip()
+df_fpkm_specific_clusters_f<- left_join(df_fpkm_specific,df_orth,by="Locus_id") %>% 
+  left_join(.,check_cluster_select_f,by="Cluster") %>% 
+  filter(!is.na(Set))%>% filter(!grepl("HP",CGD_name))
 
-# Calculate signif
-p_adj_signif <- function(df){
-  df %>% mutate(`p.adj.signif`=ifelse(p.adj>=0.05,"ns",
-                              ifelse(p.adj>=0.01,"*",
-                              ifelse(p.adj>=0.001,"**",
-                              ifelse(p.adj>=0.0001,"***",
-                              ifelse(p.adj>=0.0001,"****","*****"))))))
+df_fpkm_specific_clusters_f_in <- df_fpkm_specific_clusters_f %>% 
+    mutate(Status=ifelse(Set=="Virulent" & (Clade=="I" | Clade =="IV"),"Virulent",
+                         ifelse(Set=="Virulent" & (Clade=="II" | Clade == "III"), "Less Virulent",
+                                ifelse(Set=="Filament" & Clade =="V","+","-")))) %>% 
+    filter(Set=="Filament")
+
+
+
+# Function to make graph
+make_graph_fpkm <- function(df_input,timepoint){
+
+  df_fpkm_full_info_v <- df_input%>% filter(Condition==timepoint)
+  
+  # Stat compare means - works but not adjusted
+  df_fpkm_full_info_v$Status <- as.factor(df_fpkm_full_info_v$Status)
+  #df_fpkm_full_info_v %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_point() + theme_minimal() + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=1,scales="free_y") +stat_compare_means(comparisons = list(c("More Virulent","Less Virulent")),method = "t.test", aes(label = "p.signif")) + coord_flip()
+  
+  # Calculate signif
+  p_adj_signif <- function(df){
+    df %>% mutate(`p.adj.signif`=ifelse(p.adj>=0.05,"ns",
+                                        ifelse(p.adj>=0.01,"*",
+                                               ifelse(p.adj>=0.001,"**",
+                                                      ifelse(p.adj>=0.0001,"***",
+                                                             ifelse(p.adj>=0.0001,"****","*****"))))))
+  }
+  
+  # Compare means
+  v_stat <- compare_means(data=df_fpkm_full_info_v,FPKM ~ Status,group.by = "CGD_name",p.adjust.method = "bonferroni") %>%  #mutate(y.position = max(v$FPKM, na.rm = TRUE) + 100) %>% 
+    p_adj_signif()# Bonferroni
+  
+  y_positions <- df_fpkm_full_info_v %>%
+    group_by(CGD_name) %>%
+    summarize(max_FPKM = max(FPKM, na.rm = TRUE)) %>%
+    mutate(y.position = max_FPKM + 150) 
+  
+  v_stat <- v_stat %>%
+    left_join(y_positions, by = "CGD_name")  
+  
+  v_plot <- df_fpkm_full_info_v %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_boxplot(position = position_dodge(width = 0.9)) + geom_point(position = position_dodge(width = 0.9)) + theme_prism(base_size = 6) + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=9,scales="free_y") + stat_pvalue_manual(v_stat,label = "p.adj.signif",size=2)
+  v_plot
 }
 
-# Compare means
-v <- df_fpkm_full_info_v %>% filter(Set=="Virulent") #%>% filter(CGD_name=="SCF1_1458") 
-require(rstatix)
-v_stat <- compare_means(data=v,FPKM ~ Status,group.by = "CGD_name",p.adjust.method = "bonferroni") %>%  mutate(y.position = max(v$FPKM, na.rm = TRUE) + 100) %>% p_adj_signif()# Bonferroni
-
-
-
-v_plot <- df_fpkm_full_info_v %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_point() + theme_prism() + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=1,scales="free_y") + stat_pvalue_manual(v_stat,label = "p.adj.signif", tip.length = 0.01,
-  coord.flip = FALSE,vjust=1) + coord_flip()
-v_plot
-#ggsave(v_plot,file="~/Dropbox/phd/writing/auris_killifish/figures/dotplot_specific_checks_virulence_v0_2024_09_23.pdf",dev=cairo_pdf(),height = 9,width=7)
+# https://genomebiology.biomedcentral.com/articles/10.1186/s13059-022-02648-4
+# Minimise false positives
+  
 ```
 
+
+```{r fig.height=2,fig.width=10}
+p <- make_graph_fpkm(df_fpkm_specific_clusters_v_in,"24h") + labs(title="Virulence at 24 HPI")
+p
+```
+
+```{r fig.height=2,fig.width=10}
+p <- make_graph_fpkm(df_fpkm_specific_clusters_v_in,"48h") + labs(title="Virulence at 48 HPI")
+p
+```
+
+```{r fig.height=10,fig.width=10}
+p <- make_graph_fpkm(df_fpkm_specific_clusters_f_in,"24h") + labs(title="Filamentation at 24 HPI")
+p
+```
+
+```{r fig.height=10,fig.width=10}
+p <- make_graph_fpkm(df_fpkm_specific_clusters_f_in,"48h") + labs(title="Filamentation at 48 HPI")
+p
+```
 
 ```{r fig.height=30,fig.width=7}
 df_fpkm_specific_clusters <- left_join(df_fpkm_specific,df_orth,by="Locus_id") %>% 
@@ -324,21 +372,31 @@ df_fpkm_specific_clusters <- left_join(df_fpkm_specific,df_orth,by="Locus_id") %
 df_fpkm_full_info_f <- df_fpkm_specific_clusters %>% 
   mutate(Status=ifelse(Set=="Virulent" & (Clade=="I" | Clade =="IV"),"More Virulent",
                 ifelse(Set=="Virulent" & (Clade=="II" | Clade == "III"), "Less Virulent",
-                ifelse(Set=="Filament" & Clade =="V","Filamentous","Afilamentous")))) %>% filter(Set=="Filament")  
-df_fpkm_full_info_f %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_point() + theme_minimal() + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=1,scales="free_y") +stat_compare_means(comparisons = list(c("Filamentous","Afilamentous")),method = "t.test", aes(label = "p.signif")) + coord_flip()
+                ifelse(Set=="Filament" & Clade =="V","V","I-IV")))) %>% filter(Set=="Filament")  
+#df_fpkm_full_info_f %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_point() + theme_minimal() + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=1,scales="free_y") +stat_compare_means(comparisons = list(c("Filamentous","Afilamentous")),method = "t.test", aes(label = "p.signif")) + coord_flip()
 ```
 
-```{r fig.height=11,fig.width=21}
+```{r fig.height=10,fig.width=10}
 # Remove HPs
 df_fpkm_full_info_f_noHP <- df_fpkm_full_info_f %>% 
   filter(!grepl("HP",CGD_name))
-f <- df_fpkm_full_info_f_noHP %>% filter(Set=="Filament") #%>% filter(CGD_name=="SCF1_1458") 
 
-f_stat <- compare_means(data=f,FPKM ~ Status,group.by = "CGD_name",p.adjust.method = "bonferroni") %>%  mutate(y.position = max(f$FPKM, na.rm = TRUE) + 100) %>% p_adj_signif()# Bonferroni
+f <- df_fpkm_full_info_f_noHP %>% filter(Set=="Filament") %>% filter(Condition=="48h") #%>% filter(CGD_name=="SCF1_1458") 
 
-f_plot <- df_fpkm_full_info_f_noHP %>% ggplot(aes(x=Status,y=FPKM,colour=Clade)) + geom_point() + theme_prism() + scale_color_nejm() + facet_wrap(~CGD_name,drop = T,ncol=4,scales="free_y") + stat_pvalue_manual(f_stat,label = "p.adj.signif", tip.length = 0.01,
-  coord.flip = FALSE,vjust=1) + coord_flip()
+f_stat <- compare_means(data=f,FPKM ~ Status,group.by = "CGD_name",p.adjust.method = "bonferroni") %>% p_adj_signif()#%>%  mutate(y.position = max(f$FPKM, na.rm = TRUE) + 100) # Bonferroni
+
+y_positions <- df_fpkm_full_info_f_noHP %>%
+  group_by(CGD_name) %>%
+  summarize(max_FPKM = max(FPKM, na.rm = TRUE)) %>%
+  mutate(y.position = max_FPKM + 100) 
+
+f_stat <- f_stat %>%
+  left_join(y_positions, by = "CGD_name")  
+
+f_plot <- df_fpkm_full_info_f_noHP %>% ggplot(aes(x=Status,y=FPKM,colour=Clade))  + geom_boxplot(position = position_dodge(width = 0.9)) + geom_point(position = position_dodge(width = 0.9)) + theme_prism(base_size = 6) +
+  scale_color_nejm() + facet_wrap(~CGD_name,ncol=7,scales="free") + stat_pvalue_manual(f_stat,label = "p.signif", #tip.length = 0.01, 
+  #oord.flip = FALSE
+  size = 2)#+ coord_flip()
 f_plot
-#ggsave(f_plot,file="~/Dropbox/phd/writing/auris_killifish/figures/dotplot_specific_checks_filament_v0_2024_09_23.pdf",dev=cairo_pdf(),height = 11,width=21)
 ```
 
