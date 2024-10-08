@@ -134,10 +134,10 @@ species <- read_xlsx("data/sit.panfungal.fungidb_species.xlsx") %>% # Manually c
 
 genera_order <- species %>% select(Genera) %>% unique() %>% rowid_to_column(var = "Genera_order") 
 
-chart_group_order <- include_list %>% select(Chart_group) %>% unique() %>% rowid_to_column(var = "Chart_group_order") 
-
 include_list <- read_xlsx("data/sit.panfungal.fungidb_species_only.xlsx") %>% select(Species,Include,Chart_group)
 include_list$Include[is.na(include_list$Include)] <- 0
+
+chart_group_order <- include_list %>% select(Chart_group) %>% unique() %>% rowid_to_column(var = "Chart_group_order") 
 
 tabulate_mean_panfungal_hits <- function(df_input){
 # Extract counts per species from hits
