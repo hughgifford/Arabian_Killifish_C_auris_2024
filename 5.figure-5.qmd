@@ -259,7 +259,7 @@ p
 ```
 
 ```{r Show-SIT1-and-other-genes-as-heatmap,fig.height=10,fig.width=10}
-df_degs_core_time <- read_tsv("../data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
+df_degs_core_time <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs
   rename(Locus_id=Gene) %>% # Rename column
   filter(Reference=="Core") %>% 
   left_join(.,df_cgd_names_modified,by="Locus_id") %>% 
@@ -268,7 +268,7 @@ df_degs_core_time <- read_tsv("../data/C_auris_DEGS_timepoints.tsv") %>% # Load 
 
 # Add interclade genes
 
-df_degs_core_inter <- read_tsv("../data/C_auris_DEGS_interclades.tsv") %>% # Load DEGs
+df_degs_core_inter <- read_tsv("data/C_auris_DEGS_interclades.tsv") %>% # Load DEGs
   rename(Locus_id=Gene) %>% # Rename column
   filter(Reference=="Core") %>% 
   left_join(.,df_cgd_names_modified,by="Locus_id") %>% 
@@ -322,7 +322,7 @@ select_heatmap_ca(terms)
 require(tidyverse)
 
 # Clade I reference (version 2)
-df <- read_tsv("../metadata/refs/Candida_auris_clade_I_B8441_V2_GCA_002759435_reformat/Candida_auris_clade_I_B8441_V2_GCA_002759435_reformat.annotation.gff3.synima-parsed.GFF3",col_names = F) %>% select(X1,X4,X5,X7,X9)
+df <- read_tsv("data/Candida_auris_clade_I_B8441_V2_GCA_002759435_reformat.annotation.gff3.synima-parsed.GFF3",col_names = F) %>% select(X1,X4,X5,X7,X9)
 colnames(df) <- c("Contig","Start","End","Strand","Locus_id")
 
 # Order by contig - from Orthofinder/Synima
@@ -338,7 +338,7 @@ df_sits <- df %>% filter(Locus_id %in% siderophore_list)
 df_sits <- df_sits %>% arrange(Contig,Start)
 
 # Clade I reference (version 3)
-df_v3 <- read_tsv("../metadata/refs/Candida_auris_clade_I_B8441_V3_GCA_002759435.3_reformat/Candida_auris_clade_I_B8441_V3_GCA_002759435.3_reformat.annotation.gff3",col_names = F,skip = 7) %>% select(X1,X4,X5,X7,X9)
+df_v3 <- read_tsv("data/Candida_auris_clade_I_B8441_V3_GCA_002759435.3_reformat.annotation.gff3",col_names = F,skip = 7) %>% select(X1,X4,X5,X7,X9)
 colnames(df_v3) <- c("Contig","Start","End","Strand","Locus_id")
 df_v3 <- df_v3 %>% filter(grepl("old_locus_tag",Locus_id)) %>% 
   separate(Locus_id,into = c("New_locus_id","Locus_id"),sep=";old_locus_tag=") %>% 
