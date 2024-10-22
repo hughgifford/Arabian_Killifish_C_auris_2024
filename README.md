@@ -1,6 +1,6 @@
 # Arabian Killifish *C. auris* 2024
 
-Supportive Code for Manuscript Titled "Xenosiderophore transporter gene expression and clade-specific filamentation in *Candida auris* killifish infection" by Hugh Gifford, Tina Bedekovic, Nicolas Helmstetter, Jack Gregory, Qinxi Ma, Alexandra C. Brand, Duncan Wilson, Johanna Rhodes, Mark Ramsdale, Tetsuhiro Kudoh, Rhys Farrer.
+Supportive code for manuscript titled "Xenosiderophore transporter gene expression and clade-specific filamentation in *Candida auris* killifish infection" by Hugh Gifford, Tina Bedekovic, Nicolas Helmstetter, Jack Gregory, Qinxi Ma, Alexandra C. Brand, Duncan Wilson, Johanna Rhodes, Mark Ramsdale, Tetsuhiro Kudoh, Rhys Farrer.
 
 ## Instructions
 
