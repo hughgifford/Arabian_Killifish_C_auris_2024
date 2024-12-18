@@ -1,0 +1,139 @@
+# Supplementary Tables
+
+```{r}
+host_genes <- read_xlsx("data/tables_auris_killifish_v2_2024_10_09.xlsx",sheet = "2. Host DEGs",skip = 2)
+host_fpkm <- read_tsv("data/A_dispar_FPKM.tsv") %>% 
+  separate(condition,into=c("Injection","Timepoint","Replication"),sep = "_")
+locus_id_rowname <- ak_logfc %>% select(Locus_id,Unique_rowname) %>% distinct()
+```
+
+
+```{r}
+sham_host_genes <- host_genes %>% filter(Category=="Sham injection. vs no injection") %>% 
+  rename(Unique_rowname="Gene ID") %>% 
+  left_join(locus_id_rowname,by="Unique_rowname")
+sham_host_fpkm <- host_fpkm %>% filter(Injection=="Water"|Injection=="None") %>% 
+  filter(gene %in% sham_host_genes$Locus_id) 
+sham_host_fpkm_tbl <- sham_host_fpkm %>% 
+  group_by(Injection,Timepoint,gene) %>% 
+  summarise(Mean_fpkm=round(mean(fpkm),2)) %>% 
+  pivot_wider(names_from = "Injection",values_from = "Mean_fpkm") %>% 
+  rename(Locus_id=gene)
+sham_host_wider <- sham_host_genes %>% 
+  left_join(sham_host_fpkm_tbl,by=c("Timepoint","Locus_id"))
+
+write_tsv(sham_host_wider,file="data/tables_sham_host_fpkm.tsv")
+```
+
+
+```{r}
+infect_host_genes <- host_genes %>% filter(Category!="Sham injection. vs no injection") %>% 
+  rename(Unique_rowname="Gene ID") %>% 
+  left_join(locus_id_rowname,by="Unique_rowname")
+infect_host_fpkm <- host_fpkm %>% filter(Injection!="None") %>% 
+  filter(gene %in% infect_host_genes$Locus_id) 
+infect_host_fpkm_tbl <- infect_host_fpkm %>% 
+  group_by(Injection,Timepoint,gene) %>% 
+  summarise(Mean_fpkm=round(mean(fpkm),2)) %>% 
+  pivot_wider(names_from = "Injection",values_from = "Mean_fpkm") %>% 
+  rename(Locus_id=gene)
+infect_host_wider <- infect_host_genes %>% 
+  left_join(infect_host_fpkm_tbl,by=c("Timepoint","Locus_id"))
+
+# Get log fold change too
+infect_host_logfc <- ak_logfc %>% 
+  mutate(Log_FC=as.character(round(Log_FC,2))) %>% 
+  filter(Category=="Infection vs Sham Controls") %>% 
+  select(Clade,Comparison,Log_FC,Unique_rowname) %>% 
+  mutate(Comparison=paste("Log-fold change",Comparison)) %>% 
+  pivot_wider(names_from = "Comparison",values_from = "Log_FC") %>% 
+  rename("Timepoint"=Clade) %>% 
+  mutate(across(everything(), ~ replace_na(.x, "-")))
+
+# FDR
+infect_host_fdr <- ak_logfc %>% 
+  mutate(`-1*log10(FDR)`=as.character(round(`-1*log10(FDR)`,2))) %>% 
+  filter(Category=="Infection vs Sham Controls") %>% 
+  select(Clade,Comparison,`-1*log10(FDR)`,Unique_rowname) %>% 
+  mutate(Comparison=paste("-1*log10(FDR)",Comparison)) %>% 
+  pivot_wider(names_from = "Comparison",values_from = `-1*log10(FDR)`) %>% 
+  rename("Timepoint"=Clade) %>% 
+  mutate(across(everything(), ~ replace_na(.x, "-")))
+
+infect_host_wider_2 <- infect_host_wider %>% 
+  left_join(infect_host_logfc,by=c("Timepoint","Unique_rowname")) %>% 
+  left_join(infect_host_fdr,by=c("Timepoint","Unique_rowname")) 
+
+write_tsv(infect_host_wider_2,file="data/tables_infect_host_fpkm.tsv")
+```
+
+Combined approach
+
+```{r}
+path_combo_genes <- read_xlsx("data/tables_auris_killifish_v2_2024_10_09.xlsx",sheet = "3. Pathogen DEGs",skip = 3,n_max = 31)
+
+# From figure 3
+path_logfc_core <- left_join(df,df_cgd_names_modified,by="Locus_id") %>% 
+  filter(Reference=="Core") %>% 
+  left_join(.,lookup_gene_id,by="Locus_id") %>% # Add categories and names
+  mutate(New_name=ifelse(!is.na(Gene_id),Gene_id,CGD_name)) %>% 
+  mutate(Gene_id=New_name) %>% 
+  select(-c(New_name,Category,CGD_name,Reference)) %>% 
+  filter(Gene_id %in% path_combo_genes$Gene_id) 
+
+path_logfc_core_logfc <- path_logfc_core %>% 
+  mutate(Clade = paste("Log-fold change ",Clade," (",Comparison,")",sep="")) %>% 
+  mutate(Log_FC=as.character(round(Log_FC,2))) %>% 
+  select(-c(`-1log10(FDR)`,FDR,DEG,Locus_id,Comparison)) %>% 
+  pivot_wider(names_from = "Clade",values_from = "Log_FC") %>% 
+  mutate(across(everything(), ~ replace_na(.x, "-")))
+
+path_logfc_core_fdr <- path_logfc_core %>% 
+  mutate(Clade = paste("-1*log10(FDR) ",Clade," (",Comparison,")",sep="")) %>% 
+  mutate(`-1log10(FDR)`=as.character(round(`-1log10(FDR)`,2))) %>% 
+  select(-c(Log_FC,FDR,DEG,Locus_id,Comparison)) %>% 
+  pivot_wider(names_from = "Clade",values_from = "-1log10(FDR)") %>% 
+  mutate(across(everything(), ~ replace_na(.x, "-")))
+
+path_fpkm <- df_fpkm_raw %>%  
+  separate(Experiment,into=c("Injection","Timepoint","Replication"),sep = "_")
+
+#path_fkpm_combo <- df_fpkm
+#infect_host_fpkm_tbl <- infect_host_fpkm %>% 
+#  group_by(Injection,Timepoint,gene) %>% 
+#  summarise(Mean_fpkm=round(mean(fpkm),2)) %>% 
+#  pivot_wider(names_from = "Injection",values_from = "Mean_fpkm") %>% 
+#  rename(Locus_id=gene)
+#infect_host_wider <- infect_host_genes %>% 
+#  left_join(infect_host_fpkm_tbl,by=c("Timepoint","Locus_id"))
+
+path_combo_genes_wider <- left_join(path_combo_genes,path_logfc_core_logfc,by="Gene_id") %>% 
+   left_join(path_logfc_core_fdr,by="Gene_id")
+
+write_tsv(path_combo_genes_wider,file="data/tables_combo_fpkm.tsv")
+```
+
+Unified tables
+
+```{r}
+path_logfc <- left_join(df,df_cgd_names_modified,by="Locus_id") %>% 
+  #filter(Reference=="Core") %>% 
+  left_join(.,lookup_gene_id,by="Locus_id") %>% 
+  select(-c(Category,Gene_id)) %>% 
+  rename(Gene_id=CGD_name) %>% 
+  mutate(Log_FC=round(Log_FC,2)) %>% 
+  mutate(FDR=round(FDR,2)) %>% 
+  mutate(`-1*log10(FDR)`=round(`-1log10(FDR)`,2)) %>% 
+  select(-c(`-1log10(FDR)`))
+
+path_fpkm <- df_fpkm_raw %>%  
+  separate(Experiment,into=c("Injection","Timepoint","Replication"),sep = "_") 
+
+path_fpkm_mean <- path_fpkm %>% 
+  group_by(Injection,Timepoint,Reference_genome,Locus_id) %>% 
+  summarise(Mean_fpkm=round(mean(FPKM),2))
+
+write_tsv(path_logfc,file="data/pathogen_logfc.tsv")
+write_tsv(path_fpkm_mean,file="data/pathogen_fpkm.tsv")
+```
+

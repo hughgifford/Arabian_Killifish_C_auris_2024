@@ -253,7 +253,7 @@ p1
 ```
 
 ```{r MTL-narrow-B8441}
-df_mtl_fpkm_narrow_plot <- df_fpkm_ %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
+df_mtl_fpkm_narrow_plot <- df_fpkm %>% select(-c(Clade,Reference_genome)) %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
   filter(!is.na(Clade))
 
 df_mtl_fpkm_b8441 <- df_fpkm_b8441 %>% left_join(.,df_mtl_narrow_plot,by="Locus_id") %>% 
@@ -382,8 +382,8 @@ df_fpkm_full_info_f_noHP <- df_fpkm_full_info_f %>%
   filter(!grepl("HP",CGD_name))
 
 f <- df_fpkm_full_info_f_noHP %>% filter(Set=="Filament") %>% filter(Condition=="48h") #%>% filter(CGD_name=="SCF1_1458") 
-
-f_stat <- compare_means(data=f,FPKM ~ Status,group.by = "CGD_name",p.adjust.method = "bonferroni") %>% p_adj_signif()#%>%  mutate(y.position = max(f$FPKM, na.rm = TRUE) + 100) # Bonferroni
+require(rstatix)
+f_stat <- compare_means(data=f,FPKM ~ Status,group.by = "CGD_name",p.adjust.method = "bonferroni") #%>% p_adj_signif()#%>%  mutate(y.position = max(f$FPKM, na.rm = TRUE) + 100) # Bonferroni
 
 y_positions <- df_fpkm_full_info_f_noHP %>%
   group_by(CGD_name) %>%
