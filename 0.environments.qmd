@@ -5,8 +5,8 @@
 This is only necessary for data processing as detailed in the manuscript. For analysis and plotting of processed data, please proceed to unzipping gzipped datasets.
 
 ```{bash,eval=F}
-cd mamba_environments
-for i in *;do mamba env create -f $i;done
+cd packages_and_environments
+for i in *.yaml;do mamba env create -f $i;done
 ```
 
 ## Unzipping gzipped datasets
@@ -17,6 +17,8 @@ for i in *; do gunzip $i; done
 ```
 
 ## R Environments for Analysis and Plotting
+
+R environment details are available in "packaged_and_environments/R_environment_info.txt".
 
 ```{r}
 # Data
