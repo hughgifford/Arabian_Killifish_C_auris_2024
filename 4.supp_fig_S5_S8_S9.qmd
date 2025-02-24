@@ -1,4 +1,4 @@
-# Figure 4
+# Figure S5
 
 ```{r}
 table_vir <- read_xlsx("data/C_auris_DEGS_virulence_info.xlsx")
@@ -162,6 +162,8 @@ plot <- x %>%
   facet_grid(~Comparison) + scale_colour_lancet()
 plot
 ```
+
+# Supp. Fig. 8-9 *MTL* checks
 
 ```{r MTL-data}
 # Load Clade-specific FPKM files - all reference genomes
