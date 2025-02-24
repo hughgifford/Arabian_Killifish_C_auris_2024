@@ -418,7 +418,7 @@ hotdot1 <- go_remove %>%
 hotdot1
 ```
 
-# Supp. Fig. 3 *C. auris* orthogroup and variance detection
+# Supp. Fig. 7 *C. auris* orthogroup and variance detection
 
 ```{r Assign-orthogroups}
 # Add Accessory Genome Data
