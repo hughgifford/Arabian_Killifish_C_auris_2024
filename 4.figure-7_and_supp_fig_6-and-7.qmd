@@ -1,4 +1,4 @@
-# Figure S5
+# Figure 7
 
 ```{r}
 table_vir <- read_xlsx("data/C_auris_DEGS_virulence_info.xlsx")
@@ -163,7 +163,7 @@ plot <- x %>%
 plot
 ```
 
-# Supp. Fig. 8-9 *MTL* checks
+# Supp. Fig. 6-7: *C. auris* Mating-Type Locus Gene Expression and Comparing individual transcript levels for each orthogroup in filamentous clade V 
 
 ```{r MTL-data}
 # Load Clade-specific FPKM files - all reference genomes

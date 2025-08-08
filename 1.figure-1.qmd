@@ -1,4 +1,4 @@
-# Figure 1
+# Figure 1 Modelling C. auris infection in the Arabian killifish 
 
 ```{r A-Survival-Curves}
 # Load data 

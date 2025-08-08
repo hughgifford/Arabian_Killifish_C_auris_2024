@@ -160,7 +160,7 @@ enrichment <- function(clade,comparison){
 }
 ```
 
-# Supp. Fig. 1 Model Evaluation
+# Supp. Fig. 1 Profiles of *C. auris* growth, morphotype, morphology, and gene expression. 
 
 ```{r C-Growth-Curve}
 # Access data
@@ -353,7 +353,7 @@ plot
 
 
 
-# Supp. Fig. 2: *A. dispar* Enrichment
+# Supp. Fig. 3: *A. dispar* gene ontology, pathway and domain enrichment during infection vs sham control: 
 
 ```{r A-dispar-Enrichment-sham}
 # Enrichment Testing on Sham Injection
@@ -418,7 +418,7 @@ hotdot1 <- go_remove %>%
 hotdot1
 ```
 
-# Supp. Fig. 7 *C. auris* orthogroup and variance detection
+# Supp. Fig. 4 Contextualising differential gene expression across orthogroups and broader RNA-seq datasets.
 
 ```{r Assign-orthogroups}
 # Add Accessory Genome Data
@@ -716,7 +716,7 @@ plot
 ```
 
 
-# Supp. Fig. 3 - *C. auris* enrichment
+# Figure 6 - *C. auris* gene set, pathway and domain enrichment
 
 ```{r fig.height=10,fig.width=20}
 df_degs_input <- read_tsv("data/C_auris_DEGS_timepoints.tsv") %>% # Load DEGs

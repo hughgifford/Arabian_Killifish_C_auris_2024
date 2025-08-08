@@ -1,4 +1,4 @@
-# Figure 5
+# Supp. Fig. 5 Xenosiderophore Transporter Analysis: 
 
 ```{r Plot-ggtree-for-Candida-SIT1,fig.height=14,fig.width=14}
 # Load Tree file

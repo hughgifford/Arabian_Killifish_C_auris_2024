@@ -1,4 +1,4 @@
-# Figure 3
+# Figure 4-5 *C. auris* gene expression *in vivo vs in vitro* 
 
 ```{r Upset-Plots,fig.height=3,fig.width=17}
 # Load data

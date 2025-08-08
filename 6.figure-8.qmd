@@ -1,4 +1,4 @@
-# Figure 6
+# Figure 8 Panfungal Xenosiderophore Phylogeny 
 
 ```{r Panfungal-SITs}
 # Load Tree

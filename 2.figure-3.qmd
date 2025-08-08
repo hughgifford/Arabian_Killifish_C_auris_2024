@@ -1,6 +1,4 @@
-# Figure 2
-
-# Fig. 2: Host Gene Expression
+# Figure 3 AK host responses to *C. auris* infection
 
 ```{r A-Bar-Chart-A-dispar-DEGs, fig.height=10,fig.width=20}
 # Load genes of interest - with names
