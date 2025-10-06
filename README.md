@@ -8,5 +8,5 @@ Please follow the bash instructions to decompress gzipped files in the data fold
 
 ## Questions
 
-hg456@exeter.ac.uk
+H.Gifford@exeter.ac.uk
 
