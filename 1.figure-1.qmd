@@ -24,6 +24,9 @@ sum(count_surv$Total)
 # Survival Object
 fit <- survfit(Surv(`Survival Time (hours)`,Censored_is_Zero) ~ Group, data = surv)
 
+# Calculate median survival
+surv %>% group_by(Group) %>% summarise(Median_surv_time=median(`Survival Time (hours)`)) %>% mutate(Median_surv_time_round=round(Median_surv_time,1))
+
 # Graph
 plot_surv <- ggsurvplot(fit, 
                         surv, 
